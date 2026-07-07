@@ -20,6 +20,12 @@ type Services struct {
 	Budget    *service.Budget
 	Materials *service.Materials
 	Documents *service.Documents
+	CaseFiles *service.CaseFiles
+	Drawings  *service.Drawings
+	Checklist *service.Compliance
+	Sources   *service.Sources
+	Assistant *service.Assistant
+	Generator *service.Generator
 }
 
 type Server struct {
@@ -110,4 +116,35 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/documents/{documentID}/links", getUnder(s.svc.Documents.ListLinks, "documentID"))
 	mux.HandleFunc("POST /api/v1/documents/{documentID}/links", createUnder(s.svc.Documents.AddLink, "documentID"))
 	mux.HandleFunc("DELETE /api/v1/documents/{documentID}/links/{linkID}", s.removeDocumentLink)
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/case-files", getUnder(s.svc.CaseFiles.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/case-files", createUnder(s.svc.CaseFiles.Create, "projectID"))
+	mux.HandleFunc("GET /api/v1/case-files/{caseFileID}", getUnder(s.svc.CaseFiles.Get, "caseFileID"))
+	mux.HandleFunc("PATCH /api/v1/case-files/{caseFileID}", patchByID(s.svc.CaseFiles.Update, "caseFileID"))
+	mux.HandleFunc("DELETE /api/v1/case-files/{caseFileID}", deleteByID(s.svc.CaseFiles.Delete, "caseFileID"))
+	mux.HandleFunc("GET /api/v1/case-files/{caseFileID}/events", getUnder(s.svc.CaseFiles.ListEvents, "caseFileID"))
+	mux.HandleFunc("POST /api/v1/case-files/{caseFileID}/events", createUnder(s.svc.CaseFiles.AddEvent, "caseFileID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/drawings", getUnder(s.svc.Drawings.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/drawings", createUnder(s.svc.Drawings.Create, "projectID"))
+	mux.HandleFunc("GET /api/v1/drawings/{drawingID}", getUnder(s.svc.Drawings.Get, "drawingID"))
+	mux.HandleFunc("PATCH /api/v1/drawings/{drawingID}", patchByID(s.svc.Drawings.Update, "drawingID"))
+	mux.HandleFunc("DELETE /api/v1/drawings/{drawingID}", deleteByID(s.svc.Drawings.Delete, "drawingID"))
+	mux.HandleFunc("GET /api/v1/drawings/{drawingID}/versions", getUnder(s.svc.Drawings.ListVersions, "drawingID"))
+	mux.HandleFunc("POST /api/v1/drawings/{drawingID}/versions", createUnder(s.svc.Drawings.AddVersion, "drawingID"))
+
+	mux.HandleFunc("GET /api/v1/case-files/{caseFileID}/checklist", getUnder(s.svc.Checklist.List, "caseFileID"))
+	mux.HandleFunc("POST /api/v1/case-files/{caseFileID}/checklist", createUnder(s.svc.Checklist.Create, "caseFileID"))
+	mux.HandleFunc("PATCH /api/v1/checklist-items/{itemID}", patchByID(s.svc.Checklist.Update, "itemID"))
+	mux.HandleFunc("DELETE /api/v1/checklist-items/{itemID}", deleteByID(s.svc.Checklist.Delete, "itemID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/sources", getUnder(s.svc.Sources.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/sources", createUnder(s.svc.Sources.Ingest, "projectID"))
+	mux.HandleFunc("DELETE /api/v1/sources/{sourceID}", deleteByID(s.svc.Sources.Delete, "sourceID"))
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/sources/search", s.searchSources)
+
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/assistant/ask", createUnder(s.svc.Assistant.Ask, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/case-files/{caseFileID}/generated", getUnder(s.svc.Generator.List, "caseFileID"))
+	mux.HandleFunc("POST /api/v1/case-files/{caseFileID}/generate", createUnder(s.svc.Generator.Generate, "caseFileID"))
 }

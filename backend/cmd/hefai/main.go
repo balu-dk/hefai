@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/balu-dk/hefai/backend/internal/ai"
 	"github.com/balu-dk/hefai/backend/internal/auth"
 	"github.com/balu-dk/hefai/backend/internal/config"
 	"github.com/balu-dk/hefai/backend/internal/database"
@@ -57,11 +58,20 @@ func run() error {
 	budget := repository.NewBudget(pool)
 	materials := repository.NewMaterials(pool)
 	documents := repository.NewDocuments(pool)
+	caseFiles := repository.NewCaseFiles(pool)
+	drawings := repository.NewDrawings(pool)
+	compliance := repository.NewCompliance(pool)
+	sources := repository.NewSources(pool)
+	generated := repository.NewGenerated(pool)
 
 	files, err := filestore.NewDisk(cfg.FileStoreDir)
 	if err != nil {
 		return err
 	}
+
+	// LLM-provideren vælges senere; indtil da svarer assistenten med rene
+	// kildeuddrag (retrieval virker, formulerede svar er slået fra).
+	var llm ai.Provider = ai.Unconfigured{}
 
 	svc := httpapi.Services{
 		Auth:      service.NewAuth(users, tokens),
@@ -73,6 +83,13 @@ func run() error {
 		Budget:    service.NewBudget(budget, phases, projects),
 		Materials: service.NewMaterials(materials, suppliers, projects),
 		Documents: service.NewDocuments(documents, files, projects),
+		CaseFiles: service.NewCaseFiles(caseFiles, projects),
+		Drawings:  service.NewDrawings(drawings, caseFiles, projects),
+		Checklist: service.NewCompliance(compliance, caseFiles, sources, projects),
+		Sources:   service.NewSources(sources, projects),
+		Assistant: service.NewAssistant(sources, caseFiles, llm, projects),
+		Generator: service.NewGenerator(generated, caseFiles, drawings, compliance,
+			projects, documents, files, projects),
 	}
 
 	server := &http.Server{
