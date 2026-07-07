@@ -30,6 +30,8 @@ type Services struct {
 	Packages   *service.Packages
 	Blueprints *service.Blueprints
 	Ortho      *service.Ortho
+	DrawAssist *service.DrawAssist
+	Advisor    *service.Advisor
 }
 
 type Server struct {
@@ -179,4 +181,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/projects/{projectID}/ortho", s.orthoImage)
 	mux.HandleFunc("GET /api/v1/ortho/status", s.orthoStatus)
+
+	mux.HandleFunc("POST /api/v1/drawings/{drawingID}/ai-draw", createUnder(s.svc.DrawAssist.Generate, "drawingID"))
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/advisor", getUnder(s.svc.Advisor.Get, "projectID"))
 }

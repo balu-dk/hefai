@@ -101,7 +101,10 @@ func run() error {
 		Packages:   service.NewPackages(packages, structural, projects, documents, files, projects),
 		Blueprints: service.NewBlueprints(llm, cfg.AIDocsDir, projects, phases, rooms, tasks,
 			budget, materials, caseFiles, projects),
-		Ortho: service.NewOrtho(cfg.OrthoWMSURL, cfg.OrthoLayer, cfg.OrthoToken, projects),
+		Ortho:      service.NewOrtho(cfg.OrthoWMSURL, cfg.OrthoLayer, cfg.OrthoToken, projects),
+		DrawAssist: service.NewDrawAssist(llm, cfg.AIDocsDir, drawings, projects),
+		Advisor: service.NewAdvisor(llm, cfg.AIDocsDir, phases, tasks, budget, materials,
+			caseFiles, drawings, sources, projects),
 	}
 
 	server := &http.Server{

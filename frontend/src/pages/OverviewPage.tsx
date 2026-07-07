@@ -22,6 +22,7 @@ export default function OverviewPage() {
   return (
     <>
       <h1>{project.name}</h1>
+      <AdvisorCard projectId={projectId!} />
       <GettingStarted
         projectId={projectId!}
         hasDrawing={(drawings?.length ?? 0) > 0}
@@ -137,6 +138,42 @@ export default function OverviewPage() {
         </table>
       </div>
     </>
+  )
+}
+
+// Projektrådgiveren: aktiv analyse af projektets tilstand — advarsler, tips
+// og (med LLM) en kort formuleret statusvurdering.
+interface AdvisorData {
+  insights: { level: 'warning' | 'tip' | 'info'; text: string; linkTo: string }[]
+  summary?: string
+  provider?: string
+}
+
+function AdvisorCard({ projectId }: { projectId: string }) {
+  const { data } = useLoad(() => api.get<AdvisorData>(`/projects/${projectId}/advisor`), [projectId])
+  if (!data) return null
+
+  const icons = { warning: '⚠️', tip: '💡', info: 'ℹ️' }
+  return (
+    <div className="card" style={{ borderLeft: '3px solid var(--blue)' }}>
+      <h3 style={{ margin: '0 0 8px' }}>Projektrådgiveren</h3>
+      {data.summary && (
+        <p style={{ marginTop: 0 }}>
+          {data.summary}
+          <span className="hint" style={{ display: 'block', marginTop: 4 }}>
+            Vurderet af {data.provider} ud fra projektets egne tal — ikke en myndighedsvurdering.
+          </span>
+        </p>
+      )}
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {data.insights.map((insight, i) => (
+          <li key={i} style={{ marginBottom: 6 }}>
+            {icons[insight.level] ?? 'ℹ️'}{' '}
+            {insight.linkTo ? <Link to={insight.linkTo}>{insight.text}</Link> : insight.text}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

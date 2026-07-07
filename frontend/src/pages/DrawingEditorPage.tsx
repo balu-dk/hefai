@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Drawing, DrawingData, DrawingVersion, Opening, Point, Wall } from '../api/types'
 import { ErrorText, useLoad } from '../components'
+import { newDetectedRooms, pointInPolygon as pointInPoly } from './drawingTools'
 
 // three.js er tung — hent den først når 3D-fanen åbnes.
 const Drawing3DView = lazy(() => import('./Drawing3DView'))
@@ -37,6 +38,25 @@ export default function DrawingEditorPage() {
   const [treeCrown, setTreeCrown] = useState(4000)
   const [orthoURL, setOrthoURL] = useState<string | null>(null)
   const { data: orthoStatus } = useLoad(() => api.get<{ configured: boolean }>(`/ortho/status`), [])
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
+  const historyRef = useRef<DrawingData[]>([])
+  const shiftRef = useRef(false)
+
+  // mutate = setData med fortryd-historik (Ctrl+Z).
+  const mutate = useCallback((fn: (d: DrawingData) => DrawingData) => {
+    setData((d) => {
+      historyRef.current.push(d)
+      if (historyRef.current.length > 50) historyRef.current.shift()
+      return fn(d)
+    })
+  }, [])
+
+  const undo = useCallback(() => {
+    const prev = historyRef.current.pop()
+    if (prev) setData(prev)
+  }, [])
 
   // Hent luftfoto når tegningen har en geo-forankring.
   const geoKey = data.geo ? `${data.geo.lat},${data.geo.lon},${data.geo.sizeM}` : ''
@@ -109,25 +129,62 @@ export default function DrawingEditorPage() {
     return best && best.dist < 500 ? best : null
   }
 
+  // Akse-snap: vægge klikker på vandret/lodret medmindre Shift holdes nede.
+  function snapWallEnd(from: Point, p: Point): Point {
+    if (shiftRef.current) return p
+    const dx = p.x - from.x
+    const dy = p.y - from.y
+    if (dx === 0 && dy === 0) return p
+    if (Math.abs(dy) <= Math.abs(dx) * 0.27) return { x: p.x, y: from.y } // < ~15°
+    if (Math.abs(dx) <= Math.abs(dy) * 0.27) return { x: from.x, y: p.y }
+    return p
+  }
+
+  function finishPolygon() {
+    if (tool === 'room' && pending.length >= 3) {
+      const polygon = pending
+      const name = window.prompt('Rummets navn:', `Rum ${data.rooms.length + 1}`)
+      if (name) {
+        mutate((d) => ({ ...d, rooms: [...d.rooms, { name, polygon }] }))
+      }
+      setPending([])
+    } else if (tool === 'plot' && pending.length >= 3) {
+      const boundary = pending
+      mutate((d) => ({
+        ...d,
+        plot: { boundary, offset: d.plot?.offset ?? { x: 0, y: 0 }, rotationDeg: d.plot?.rotationDeg ?? 0 },
+      }))
+      setPending([])
+    } else if (tool === 'wall') {
+      setPending([])
+    }
+  }
+
   function handleClick(e: React.MouseEvent) {
     if (tool === 'pan') return
-    const p = toWorld(e)
+    let p = toWorld(e)
 
     if (tool === 'wall') {
       if (pending.length === 0) {
         setPending([p])
       } else {
         const from = pending[0]
+        p = snapWallEnd(from, p)
         if (from.x !== p.x || from.y !== p.y) {
           const wall: Wall = {
             id: `w${Date.now()}${data.walls.length}`,
             from, to: p, thicknessMm: thickness, isLoadBearing: loadBearing,
           }
-          setData((d) => ({ ...d, walls: [...d.walls, wall] }))
+          mutate((d) => ({ ...d, walls: [...d.walls, wall] }))
         }
-        setPending([p]) // chain: next wall starts here
+        setPending([p]) // kæde: næste væg starter her
       }
     } else if (tool === 'room' || tool === 'plot') {
+      // Klik på startpunktet lukker polygonen — som i rigtige tegneprogrammer.
+      if (pending.length >= 3 && Math.hypot(p.x - pending[0].x, p.y - pending[0].y) < 400) {
+        finishPolygon()
+        return
+      }
       setPending((prev) => [...prev, p])
     } else if (tool === 'door' || tool === 'window') {
       const hit = nearestWall(rawWorld(e))
@@ -140,12 +197,10 @@ export default function DrawingEditorPage() {
         widthMm: openingWidth,
         heightMm: tool === 'door' ? 2100 : 1200,
       }
-      setData((d) => ({ ...d, openings: [...d.openings, opening] }))
+      mutate((d) => ({ ...d, openings: [...d.openings, opening] }))
     } else if (tool === 'tree') {
-      setData((d) => ({
-        ...d,
-        trees: [...(d.trees ?? []), { position: p, heightMm: treeHeight, crownDiameterMm: treeCrown }],
-      }))
+      const tree = { position: p, heightMm: treeHeight, crownDiameterMm: treeCrown }
+      mutate((d) => ({ ...d, trees: [...(d.trees ?? []), tree] }))
     } else if (tool === 'select') {
       const world = rawWorld(e)
       // Trees first (small targets), then walls.
@@ -157,27 +212,53 @@ export default function DrawingEditorPage() {
         return
       }
       const hit = nearestWall(world)
-      setSelected(hit ? { kind: 'wall', index: hit.index } : null)
+      if (hit) {
+        setSelected({ kind: 'wall', index: hit.index })
+        return
+      }
+      const roomIndex = data.rooms.findIndex((r) => pointInPoly(world, r.polygon))
+      setSelected(roomIndex >= 0 ? { kind: 'room', index: roomIndex } : null)
     }
   }
 
   function handleDoubleClick() {
-    if (tool === 'room' && pending.length >= 3) {
-      const name = window.prompt('Rummets navn:')
-      if (name) {
-        setData((d) => ({ ...d, rooms: [...d.rooms, { name, polygon: pending }] }))
-      }
-      setPending([])
-    } else if (tool === 'plot' && pending.length >= 3) {
-      setData((d) => ({
-        ...d,
-        plot: { boundary: pending, offset: d.plot?.offset ?? { x: 0, y: 0 }, rotationDeg: d.plot?.rotationDeg ?? 0 },
-      }))
-      setPending([])
-    } else if (tool === 'wall') {
-      setPending([])
-    }
+    finishPolygon()
   }
+
+  // Tastatur: Esc afbryder, Enter afslutter, Delete sletter, Ctrl+Z fortryder.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      shiftRef.current = e.shiftKey
+      const typing = (e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA'
+      if (e.key === 'Escape') {
+        setPending([])
+        setSelected(null)
+      } else if (typing) {
+        return
+      } else if (e.key === 'Enter') {
+        finishPolygonRef.current()
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelectedRef.current()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        undo()
+      }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      shiftRef.current = e.shiftKey
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [undo])
+
+  // Refs så tastatur-lytteren altid rammer nyeste closure.
+  const finishPolygonRef = useRef(finishPolygon)
+  finishPolygonRef.current = finishPolygon
+  const deleteSelectedRef = useRef(() => {})
 
   function handleMouseDown(e: React.MouseEvent) {
     if (tool === 'pan' || e.button === 1) {
@@ -194,7 +275,12 @@ export default function DrawingEditorPage() {
       setViewBox({ ...panState.current.box, x: panState.current.box.x - dx, y: panState.current.box.y - dy })
       return
     }
-    setCursor(toWorld(e))
+    shiftRef.current = e.shiftKey
+    let p = toWorld(e)
+    if (tool === 'wall' && pending.length > 0) {
+      p = snapWallEnd(pending[0], p)
+    }
+    setCursor(p)
   }
 
   function handleWheel(e: React.WheelEvent) {
@@ -212,15 +298,70 @@ export default function DrawingEditorPage() {
     if (!selected) return
     if (selected.kind === 'wall') {
       const wall = data.walls[selected.index]
-      setData((d) => ({
+      mutate((d) => ({
         ...d,
         walls: d.walls.filter((_, i) => i !== selected.index),
         openings: d.openings.filter((o) => o.wallId !== wall.id),
       }))
     } else if (selected.kind === 'tree') {
-      setData((d) => ({ ...d, trees: (d.trees ?? []).filter((_, i) => i !== selected.index) }))
+      mutate((d) => ({ ...d, trees: (d.trees ?? []).filter((_, i) => i !== selected.index) }))
+    } else if (selected.kind === 'room') {
+      mutate((d) => ({ ...d, rooms: d.rooms.filter((_, i) => i !== selected.index) }))
     }
     setSelected(null)
+  }
+  deleteSelectedRef.current = deleteSelected
+
+  // Automatisk rum-detektion: find lukkede lommer mellem væggene.
+  function autoDetectRooms() {
+    const detected = newDetectedRooms(data)
+    if (detected.length === 0) {
+      setError('Ingen nye lukkede rum fundet — tjek at væggene mødes, så rummet er helt lukket.')
+      return
+    }
+    setError(null)
+    mutate((d) => ({
+      ...d,
+      rooms: [
+        ...d.rooms,
+        ...detected.map((polygon, i) => ({ name: `Rum ${d.rooms.length + i + 1}`, polygon })),
+      ],
+    }))
+  }
+
+  function renameRoom(index: number) {
+    const current = data.rooms[index]
+    const name = window.prompt('Nyt navn til rummet:', current.name)
+    if (name && name !== current.name) {
+      mutate((d) => ({
+        ...d,
+        rooms: d.rooms.map((r, i) => (i === index ? { ...r, name } : r)),
+      }))
+    }
+  }
+
+  // AI-tegning: beskriv huset, få et udkast ind i tegnefladen.
+  async function aiDraw() {
+    if (!aiPrompt.trim()) return
+    setAiBusy(true)
+    setAiNotice(null)
+    setError(null)
+    try {
+      const result = await api.post<{ data: DrawingData; source: string; notice?: string }>(
+        `/drawings/${drawingId}/ai-draw`, { prompt: aiPrompt })
+      // Behold grund, træer og luftfoto — AI'en tegner kun bygningen.
+      mutate((d) => ({
+        ...result.data,
+        plot: d.plot,
+        trees: d.trees,
+        geo: d.geo,
+      }))
+      setAiNotice(result.notice ?? (result.source === 'llm' ? 'Tegnet af AI — justér frit og gem som version.' : null))
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setAiBusy(false)
+    }
   }
 
   async function save() {
@@ -307,7 +448,9 @@ export default function DrawingEditorPage() {
             </label>
           </>
         )}
-        {view === '2d' && selected && <button className="tool" onClick={deleteSelected}>Slet valgte</button>}
+        {view === '2d' && <button className="tool" onClick={autoDetectRooms} title="Find lukkede rum mellem væggene automatisk">✨ Find rum</button>}
+        {view === '2d' && <button className="tool" onClick={undo} title="Fortryd (Ctrl+Z)">↩ Fortryd</button>}
+        {view === '2d' && selected && <button className="tool" onClick={deleteSelected}>Slet valgte (Del)</button>}
         <span style={{ flex: 1 }} />
         <label style={{ fontSize: 12.5 }}>
           Væghøjde{' '}
@@ -333,6 +476,20 @@ export default function DrawingEditorPage() {
           </p>
         </>
       )}
+      {view === '2d' && (
+        <div className="form-row" style={{ alignItems: 'center', background: 'var(--accent-soft)', borderRadius: 8, padding: '8px 10px' }}>
+          <span style={{ fontWeight: 700 }}>✨ Tegn med AI:</span>
+          <div className="field" style={{ flex: 1 }}>
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), aiDraw())}
+              placeholder='Beskriv huset — fx "hus på 10x8 m med 3 rum, badeværelse og saddeltag"' />
+          </div>
+          <button className="btn small" disabled={aiBusy || !aiPrompt.trim()} onClick={aiDraw}>
+            {aiBusy ? 'Tegner…' : 'Tegn udkast'}
+          </button>
+        </div>
+      )}
+      {aiNotice && <div className="notice">{aiNotice}</div>}
       {view === '2d' && (
       <svg
         ref={svgRef}
@@ -374,8 +531,18 @@ export default function DrawingEditorPage() {
         {/* rooms */}
         {data.rooms.map((r, i) => (
           <g key={i}>
-            <polygon points={r.polygon.map((p) => `${p.x},${p.y}`).join(' ')} fill="#f2ede4" stroke="#c9b899" strokeWidth={viewBox.w / 800} />
-            <text x={centroid(r.polygon).x} y={centroid(r.polygon).y} textAnchor="middle" fontSize={viewBox.w / 55} fill="#7d766b">
+            <polygon
+              points={r.polygon.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill={selected?.kind === 'room' && selected.index === i ? '#f6e3d7' : '#f2ede4'}
+              stroke={selected?.kind === 'room' && selected.index === i ? '#b4551e' : '#c9b899'}
+              strokeWidth={viewBox.w / 800}
+            />
+            <text
+              x={centroid(r.polygon).x} y={centroid(r.polygon).y}
+              textAnchor="middle" fontSize={viewBox.w / 55} fill="#7d766b"
+              style={{ cursor: 'pointer' }}
+              onDoubleClick={(e) => (e.stopPropagation(), renameRoom(i))}
+            >
               {r.name} ({polygonAreaM2(r.polygon).toFixed(1)} m²)
             </text>
           </g>
@@ -419,7 +586,19 @@ export default function DrawingEditorPage() {
         })}
         {/* pending preview */}
         {pending.length > 0 && cursor && tool === 'wall' && (
-          <line x1={pending[0].x} y1={pending[0].y} x2={cursor.x} y2={cursor.y} stroke="#b4551e" strokeWidth={thickness} opacity={0.4} />
+          <g>
+            <line x1={pending[0].x} y1={pending[0].y} x2={cursor.x} y2={cursor.y} stroke="#b4551e" strokeWidth={thickness} opacity={0.4} />
+            <text
+              x={(pending[0].x + cursor.x) / 2}
+              y={(pending[0].y + cursor.y) / 2 - thickness - viewBox.w / 90}
+              textAnchor="middle" fontSize={viewBox.w / 55} fill="#b4551e" fontWeight={700}
+            >
+              {Math.round(Math.hypot(cursor.x - pending[0].x, cursor.y - pending[0].y))} mm
+            </text>
+          </g>
+        )}
+        {(tool === 'room' || tool === 'plot') && pending.length >= 3 && (
+          <circle cx={pending[0].x} cy={pending[0].y} r={400} fill="none" stroke="#2e7d43" strokeWidth={viewBox.w / 500} />
         )}
         {(tool === 'room' || tool === 'plot') && pending.length > 0 && (
           <polyline
@@ -443,12 +622,12 @@ export default function DrawingEditorPage() {
       )}
 
       {view === '2d' && <p className="hint">
-        {tool === 'wall' && 'Klik for at starte en væg, klik igen for at afslutte den (kæder videre) — dobbeltklik for at stoppe kæden.'}
-        {tool === 'room' && 'Klik rummets hjørner, dobbeltklik for at lukke polygonen og navngive rummet.'}
-        {tool === 'plot' && 'Klik skellets hjørner, dobbeltklik for at lukke. Grunden vises med grøn stiplet linje.'}
+        {tool === 'wall' && 'Klik-klik tegner vægge i kæde (målet vises mens du tegner, vægge snapper til lige linjer — hold Shift for fri vinkel). Esc eller dobbeltklik stopper kæden. Tegn vægge hele vejen rundt og tryk "✨ Find rum" — så finder Hefai selv rummene.'}
+        {tool === 'room' && 'Klik hjørnerne. Luk rummet ved at klikke på startpunktet (grøn ring), trykke Enter eller dobbeltklikke. Esc fortryder. Tip: "✨ Find rum" gør det automatisk ud fra væggene.'}
+        {tool === 'plot' && 'Klik skellets hjørner. Luk ved at klikke på startpunktet, trykke Enter eller dobbeltklikke. Esc fortryder.'}
         {(tool === 'door' || tool === 'window') && 'Klik på en væg for at placere åbningen.'}
         {tool === 'tree' && 'Klik på grunden for at plante et træ — højde og kronediameter sættes i værktøjslinjen.'}
-        {tool === 'select' && 'Klik på en væg eller et træ for at vælge — brug "Slet valgte" i værktøjslinjen.'}
+        {tool === 'select' && 'Klik på en væg, et rum eller et træ for at vælge — Delete sletter. Dobbeltklik på et rumnavn for at omdøbe.'}
         {tool === 'pan' && 'Træk for at panorere. Scroll for at zoome.'}
       </p>}
 
@@ -531,7 +710,7 @@ export default function DrawingEditorPage() {
                   <td>{new Date(v.createdAt).toLocaleString('da-DK')}</td>
                   <td>
                     <button className="btn small secondary"
-                      onClick={() => (setData({ ...emptyData, ...v.data }), setLoadedVersion(v.versionNo))}>
+                      onClick={() => (historyRef.current = [], setData({ ...emptyData, ...v.data }), setLoadedVersion(v.versionNo))}>
                       Indlæs
                     </button>
                   </td>

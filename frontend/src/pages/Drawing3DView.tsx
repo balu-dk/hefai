@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import type { DrawingData, Point } from '../api/types'
 
 // Renders the measured 2D model as a walk-around 3D scene. Units: the model
@@ -19,25 +20,36 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
     const height = Math.max(mount.clientHeight, 420)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xdcebf5)
+    // Blød himmelgradient + dis i horisonten giver dybde.
+    scene.background = new THREE.Color(0xcfe0ee)
+    scene.fog = new THREE.Fog(0xcfe0ee, 60, 220)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(width, height)
-    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.05
     mount.appendChild(renderer.domElement)
 
-    // Lys: himmel + sol med skygger.
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.9))
-    const sun = new THREE.DirectionalLight(0xfff4e0, 1.6)
-    sun.position.set(30, 40, 20)
+    // Billedbaseret miljølys giver bløde reflekser i alle materialer.
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+
+    // Lav eftermiddagssol med bløde skygger.
+    const sun = new THREE.DirectionalLight(0xfff2dd, 2.6)
+    sun.position.set(35, 30, 18)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
-    sun.shadow.camera.left = -40
-    sun.shadow.camera.right = 40
-    sun.shadow.camera.top = 40
-    sun.shadow.camera.bottom = -40
+    sun.shadow.camera.left = -45
+    sun.shadow.camera.right = 45
+    sun.shadow.camera.top = 45
+    sun.shadow.camera.bottom = -45
+    sun.shadow.radius = 6
+    sun.shadow.bias = -0.0004
     scene.add(sun)
+    scene.add(new THREE.HemisphereLight(0xbcd6ee, 0x7d9468, 0.45))
 
     const wallHeight = (data.wallHeightMm || 2500) * MM
 
@@ -47,16 +59,18 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
 
     if (data.plot && data.plot.boundary.length >= 3) {
       const shape = new THREE.Shape(data.plot.boundary.map((p) => new THREE.Vector2(p.x * MM, p.y * MM)))
-      const plotGeo = new THREE.ShapeGeometry(shape)
-      const plot = new THREE.Mesh(plotGeo, new THREE.MeshLambertMaterial({ color: 0x7fae6e }))
+      const plot = new THREE.Mesh(
+        new THREE.ShapeGeometry(shape),
+        new THREE.MeshStandardMaterial({ color: 0x6f9e5c, roughness: 0.95 }),
+      )
       plot.rotation.x = -Math.PI / 2
       plot.receiveShadow = true
       groundGroup.add(plot)
     }
-    // Stor mat baggrundsflade under alt.
+    // Stor mat baggrundsflade under alt, tonet mod disen.
     const base = new THREE.Mesh(
-      new THREE.CircleGeometry(200, 48),
-      new THREE.MeshLambertMaterial({ color: 0x9bb78c }),
+      new THREE.CircleGeometry(220, 64),
+      new THREE.MeshStandardMaterial({ color: 0x8aa878, roughness: 1 }),
     )
     base.rotation.x = -Math.PI / 2
     base.position.y = -0.02
@@ -74,7 +88,7 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
         texture.colorSpace = THREE.SRGBColorSpace
         const photo = new THREE.Mesh(
           new THREE.PlaneGeometry(sizeM, sizeM),
-          new THREE.MeshLambertMaterial({ map: texture }),
+          new THREE.MeshStandardMaterial({ map: texture, roughness: 1 }),
         )
         photo.rotation.x = -Math.PI / 2
         photo.position.set(center.x * MM, 0.01, center.y * MM)
@@ -90,46 +104,57 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
     building.position.set((data.plot?.offset.x ?? 0) * MM, 0, (data.plot?.offset.y ?? 0) * MM)
     scene.add(building)
 
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xf3efe6 })
-    const innerWallMat = new THREE.MeshLambertMaterial({ color: 0xe6e0d2 })
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f1e8, roughness: 0.85 })
+    const innerWallMat = new THREE.MeshStandardMaterial({ color: 0xe9e3d5, roughness: 0.9 })
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x4a4238, transparent: true, opacity: 0.35 })
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xbfd9ee, roughness: 0.08, metalness: 0, transmission: 0.7,
+      transparent: true, opacity: 0.9,
+    })
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x3d3a34, roughness: 0.5 })
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x6f4a26, roughness: 0.55 })
 
     for (const w of data.walls) {
       const dx = (w.to.x - w.from.x) * MM
       const dz = (w.to.y - w.from.y) * MM
       const len = Math.hypot(dx, dz)
       if (len === 0) continue
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(len, wallHeight, Math.max(w.thicknessMm * MM, 0.05)),
-        w.isLoadBearing ? wallMat : innerWallMat,
-      )
+      const geometry = new THREE.BoxGeometry(len, wallHeight, Math.max(w.thicknessMm * MM, 0.05))
+      const mesh = new THREE.Mesh(geometry, w.isLoadBearing ? wallMat : innerWallMat)
       mesh.position.set(((w.from.x + w.to.x) / 2) * MM, wallHeight / 2, ((w.from.y + w.to.y) / 2) * MM)
       mesh.rotation.y = -Math.atan2(dz, dx)
       mesh.castShadow = true
       mesh.receiveShadow = true
+      // Diskrete kantlinjer giver det rene "arkitektmodel"-look.
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat)
+      mesh.add(edges)
       building.add(mesh)
 
-      // Åbninger: indfarvede felter en anelse uden på væggen.
+      // Åbninger: glas i mørk ramme hhv. trædør.
       for (const o of data.openings.filter((o) => o.wallId === w.id)) {
         const isWindow = o.type === 'window'
         const openingH = o.heightMm * MM
         const sill = isWindow ? 0.9 : 0
         const along = (o.offsetMm + o.widthMm / 2) * MM
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(o.widthMm * MM, openingH, w.thicknessMm * MM + 0.04),
-          new THREE.MeshLambertMaterial({
-            color: isWindow ? 0x9cc7e8 : 0x8a5a2e,
-            transparent: isWindow,
-            opacity: isWindow ? 0.75 : 1,
-          }),
-        )
         const t = along / len
-        box.position.set(
-          (w.from.x * MM) + dx * t,
-          sill + openingH / 2,
-          (w.from.y * MM) + dz * t,
+        const px = (w.from.x * MM) + dx * t
+        const pz = (w.from.y * MM) + dz * t
+        const angle = -Math.atan2(dz, dx)
+
+        const group = new THREE.Group()
+        const frame = new THREE.Mesh(
+          new THREE.BoxGeometry(o.widthMm * MM, openingH, w.thicknessMm * MM + 0.05),
+          frameMat,
         )
-        box.rotation.y = -Math.atan2(dz, dx)
-        building.add(box)
+        group.add(frame)
+        const fill = new THREE.Mesh(
+          new THREE.BoxGeometry(o.widthMm * MM - 0.12, openingH - 0.12, w.thicknessMm * MM + 0.08),
+          isWindow ? glassMat : doorMat,
+        )
+        group.add(fill)
+        group.position.set(px, sill + openingH / 2, pz)
+        group.rotation.y = angle
+        building.add(group)
       }
     }
 
@@ -139,7 +164,7 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
       const shape = new THREE.Shape(room.polygon.map((p) => new THREE.Vector2(p.x * MM, p.y * MM)))
       const floor = new THREE.Mesh(
         new THREE.ShapeGeometry(shape),
-        new THREE.MeshLambertMaterial({ color: 0xd9c9a8 }),
+        new THREE.MeshStandardMaterial({ color: 0xcbb489, roughness: 0.65 }),
       )
       floor.rotation.x = -Math.PI / 2
       floor.position.y = 0.02
@@ -159,7 +184,7 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
       const spanY = maxY - minY
       const angle = ((data.roofAngleDeg ?? 0) * Math.PI) / 180
       const overhang = 0.4
-      const roofMat = new THREE.MeshLambertMaterial({ color: 0x745441 })
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x5c4436, roughness: 0.8 })
 
       if (angle > 0.01 && spanX > 0 && spanY > 0) {
         const alongX = spanX >= spanY
@@ -196,27 +221,32 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
     }
 
     // --- Træer (i grund-koordinater) -----------------------------------------
-    for (const t of data.trees ?? []) {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5e4530, roughness: 0.9 })
+    data.trees?.forEach((t, treeIndex) => {
       const h = t.heightMm * MM
       const crownR = (t.crownDiameterMm / 2) * MM
       const trunkH = Math.max(h - crownR * 1.4, h * 0.3)
       const tree = new THREE.Group()
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.18, trunkH, 8),
-        new THREE.MeshLambertMaterial({ color: 0x6d4c33 }),
-      )
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, trunkH, 8), trunkMat)
       trunk.position.y = trunkH / 2
       trunk.castShadow = true
-      const crown = new THREE.Mesh(
-        new THREE.SphereGeometry(crownR, 12, 10),
-        new THREE.MeshLambertMaterial({ color: 0x3f7d3a }),
-      )
-      crown.position.y = trunkH + crownR * 0.7
-      crown.castShadow = true
-      tree.add(trunk, crown)
+      tree.add(trunk)
+      // Løvet som 3 let forskudte kugler i grønne nuancer — mere organisk
+      // end én perfekt kugle. Deterministisk pr. træ-indeks.
+      const greens = [0x3c7237, 0x4c8a42, 0x35652f]
+      for (let k = 0; k < 3; k++) {
+        const offset = ((treeIndex * 7 + k * 3) % 5) / 5 - 0.5
+        const blob = new THREE.Mesh(
+          new THREE.SphereGeometry(crownR * (0.75 + k * 0.12), 12, 10),
+          new THREE.MeshStandardMaterial({ color: greens[k], roughness: 0.95 }),
+        )
+        blob.position.set(offset * crownR * 0.8, trunkH + crownR * (0.5 + k * 0.28), offset * crownR * 0.5)
+        blob.castShadow = true
+        tree.add(blob)
+      }
       tree.position.set(t.position.x * MM, 0, t.position.y * MM)
       scene.add(tree)
-    }
+    })
 
     // --- Kamera & controls -------------------------------------------------------
     const center = sceneCenter(data)
@@ -250,6 +280,7 @@ export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; o
       disposed = true
       window.removeEventListener('resize', onResize)
       controls.dispose()
+      pmrem.dispose()
       renderer.dispose()
       mount.removeChild(renderer.domElement)
     }
