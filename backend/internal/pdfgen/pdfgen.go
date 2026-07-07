@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -22,9 +23,17 @@ type doc struct {
 	tr  func(string) string
 }
 
+// symbolFallbacks maps math/Greek characters outside cp1252 onto readable
+// ASCII so formulas survive the core-font encoding.
+var symbolFallbacks = strings.NewReplacer(
+	"γ", "gamma_", "μ", "my_", "σ", "sigma_", "τ", "tau_",
+	"ρ", "rho", "Δ", "delta_", "≤", "<=", "≥", ">=", "⁴", "^4", "→", "->",
+)
+
 func newDoc(orientation, title string, generatedAt time.Time) *doc {
 	pdf := fpdf.New(orientation, "mm", "A4", "")
-	tr := pdf.UnicodeTranslatorFromDescriptor("")
+	cp1252 := pdf.UnicodeTranslatorFromDescriptor("")
+	tr := func(s string) string { return cp1252(symbolFallbacks.Replace(s)) }
 	pdf.SetTitle(tr(title), false)
 	pdf.SetAutoPageBreak(true, 20)
 

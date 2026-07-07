@@ -24,8 +24,10 @@ type Services struct {
 	Drawings  *service.Drawings
 	Checklist *service.Compliance
 	Sources   *service.Sources
-	Assistant *service.Assistant
-	Generator *service.Generator
+	Assistant  *service.Assistant
+	Generator  *service.Generator
+	Structural *service.Structural
+	Packages   *service.Packages
 }
 
 type Server struct {
@@ -147,4 +149,26 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/v1/case-files/{caseFileID}/generated", getUnder(s.svc.Generator.List, "caseFileID"))
 	mux.HandleFunc("POST /api/v1/case-files/{caseFileID}/generate", createUnder(s.svc.Generator.Generate, "caseFileID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/structural-elements", getUnder(s.svc.Structural.ListElements, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/structural-elements", createUnder(s.svc.Structural.CreateElement, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/structural-elements/{elementID}", patchByID(s.svc.Structural.UpdateElement, "elementID"))
+	mux.HandleFunc("DELETE /api/v1/structural-elements/{elementID}", deleteByID(s.svc.Structural.DeleteElement, "elementID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/loads", getUnder(s.svc.Structural.ListLoads, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/loads", createUnder(s.svc.Structural.CreateLoad, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/loads/{loadID}", patchByID(s.svc.Structural.UpdateLoad, "loadID"))
+	mux.HandleFunc("DELETE /api/v1/loads/{loadID}", deleteByID(s.svc.Structural.DeleteLoad, "loadID"))
+
+	mux.HandleFunc("GET /api/v1/calc/methods", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, s.svc.Structural.Methods())
+	})
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/estimates", getUnder(s.svc.Structural.ListEstimates, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/estimates", createUnder(s.svc.Structural.RunEstimate, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/structural-packages", getUnder(s.svc.Packages.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/structural-packages", createUnder(s.svc.Packages.Create, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/structural-packages/{packageID}/status", patchByID(s.svc.Packages.SetStatus, "packageID"))
+	mux.HandleFunc("GET /api/v1/structural-packages/{packageID}/reviews", getUnder(s.svc.Packages.ListReviews, "packageID"))
+	mux.HandleFunc("POST /api/v1/structural-packages/{packageID}/reviews", createUnder(s.svc.Packages.AddReview, "packageID"))
 }

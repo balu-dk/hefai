@@ -63,6 +63,8 @@ func run() error {
 	compliance := repository.NewCompliance(pool)
 	sources := repository.NewSources(pool)
 	generated := repository.NewGenerated(pool)
+	structural := repository.NewStructural(pool)
+	packages := repository.NewPackages(pool)
 
 	files, err := filestore.NewDisk(cfg.FileStoreDir)
 	if err != nil {
@@ -90,6 +92,8 @@ func run() error {
 		Assistant: service.NewAssistant(sources, caseFiles, llm, projects),
 		Generator: service.NewGenerator(generated, caseFiles, drawings, compliance,
 			projects, documents, files, projects),
+		Structural: service.NewStructural(structural, projects),
+		Packages:   service.NewPackages(packages, structural, projects, documents, files, projects),
 	}
 
 	server := &http.Server{
