@@ -51,12 +51,20 @@ func run() error {
 	projects := repository.NewProjects(pool)
 	phases := repository.NewPhases(pool)
 	tasks := repository.NewTasks(pool)
+	rooms := repository.NewRooms(pool)
+	suppliers := repository.NewSuppliers(pool)
+	budget := repository.NewBudget(pool)
+	materials := repository.NewMaterials(pool)
 
 	svc := httpapi.Services{
-		Auth:     service.NewAuth(users, tokens),
-		Projects: service.NewProjects(projects, users),
-		Phases:   service.NewPhases(phases, projects),
-		Tasks:    service.NewTasks(tasks, phases, projects),
+		Auth:      service.NewAuth(users, tokens),
+		Projects:  service.NewProjects(projects, users),
+		Phases:    service.NewPhases(phases, projects),
+		Tasks:     service.NewTasks(tasks, phases, projects),
+		Rooms:     service.NewRooms(rooms, projects),
+		Suppliers: service.NewSuppliers(suppliers, projects),
+		Budget:    service.NewBudget(budget, phases, projects),
+		Materials: service.NewMaterials(materials, suppliers, projects),
 	}
 
 	server := &http.Server{

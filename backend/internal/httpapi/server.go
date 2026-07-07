@@ -11,10 +11,14 @@ import (
 )
 
 type Services struct {
-	Auth     *service.Auth
-	Projects *service.Projects
-	Phases   *service.Phases
-	Tasks    *service.Tasks
+	Auth      *service.Auth
+	Projects  *service.Projects
+	Phases    *service.Phases
+	Tasks     *service.Tasks
+	Rooms     *service.Rooms
+	Suppliers *service.Suppliers
+	Budget    *service.Budget
+	Materials *service.Materials
 }
 
 type Server struct {
@@ -66,4 +70,32 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/tasks/{taskID}", s.deleteTask)
 	mux.HandleFunc("POST /api/v1/tasks/{taskID}/dependencies", s.addTaskDependency)
 	mux.HandleFunc("DELETE /api/v1/tasks/{taskID}/dependencies/{dependsOnID}", s.removeTaskDependency)
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/rooms", getUnder(s.svc.Rooms.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/rooms", createUnder(s.svc.Rooms.Create, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/rooms/{roomID}", patchByID(s.svc.Rooms.Update, "roomID"))
+	mux.HandleFunc("DELETE /api/v1/rooms/{roomID}", deleteByID(s.svc.Rooms.Delete, "roomID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/suppliers", getUnder(s.svc.Suppliers.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/suppliers", createUnder(s.svc.Suppliers.Create, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/suppliers/{supplierID}", patchByID(s.svc.Suppliers.Update, "supplierID"))
+	mux.HandleFunc("DELETE /api/v1/suppliers/{supplierID}", deleteByID(s.svc.Suppliers.Delete, "supplierID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/budget-items", getUnder(s.svc.Budget.ListItems, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/budget-items", createUnder(s.svc.Budget.CreateItem, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/budget-items/{itemID}", patchByID(s.svc.Budget.UpdateItem, "itemID"))
+	mux.HandleFunc("DELETE /api/v1/budget-items/{itemID}", deleteByID(s.svc.Budget.DeleteItem, "itemID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/expenses", getUnder(s.svc.Budget.ListExpenses, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/expenses", createUnder(s.svc.Budget.CreateExpense, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/expenses/{expenseID}", patchByID(s.svc.Budget.UpdateExpense, "expenseID"))
+	mux.HandleFunc("DELETE /api/v1/expenses/{expenseID}", deleteByID(s.svc.Budget.DeleteExpense, "expenseID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/budget/summary", getUnder(s.svc.Budget.Summary, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/materials", getUnder(s.svc.Materials.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/materials", createUnder(s.svc.Materials.Create, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/materials/{materialID}", patchByID(s.svc.Materials.Update, "materialID"))
+	mux.HandleFunc("DELETE /api/v1/materials/{materialID}", deleteByID(s.svc.Materials.Delete, "materialID"))
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/materials/shopping-list", getUnder(s.svc.Materials.ShoppingList, "projectID"))
 }

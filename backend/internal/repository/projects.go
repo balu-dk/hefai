@@ -19,6 +19,10 @@ func NewProjects(db *pgxpool.Pool) *Projects { return &Projects{db: db} }
 const projectColumns = `id, name, description, kind, status, address, municipality,
 	cadastral_id, plot_area_m2, created_by, created_at, updated_at`
 
+// projectColumnsQualified is for queries joining other tables.
+const projectColumnsQualified = `p.id, p.name, p.description, p.kind, p.status, p.address,
+	p.municipality, p.cadastral_id, p.plot_area_m2, p.created_by, p.created_at, p.updated_at`
+
 func scanProject(row pgx.Row) (*domain.Project, error) {
 	var p domain.Project
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Kind, &p.Status, &p.Address,
@@ -76,7 +80,7 @@ func (r *Projects) Get(ctx context.Context, id uuid.UUID) (*domain.Project, erro
 
 func (r *Projects) ListForUser(ctx context.Context, userID uuid.UUID) ([]*domain.Project, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT `+projectColumns+` FROM projects p
+		SELECT `+projectColumnsQualified+` FROM projects p
 		JOIN project_members m ON m.project_id = p.id
 		WHERE m.user_id = $1
 		ORDER BY p.created_at`, userID)
