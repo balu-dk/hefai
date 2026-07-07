@@ -1,7 +1,8 @@
 import { Link, useOutletContext, useParams } from 'react-router-dom'
 import { api, kr, formatDate } from '../api/client'
-import type { BoardTask, BudgetSummary, CaseFile, Phase } from '../api/types'
+import type { BoardTask, BudgetSummary, CaseFile, Doc, Drawing, Phase } from '../api/types'
 import { Empty, StatusBadge, statusLabel, useLoad } from '../components'
+import { useStoredState } from '../onboarding'
 import type { ProjectContext } from './ProjectShell'
 
 export default function OverviewPage() {
@@ -11,6 +12,8 @@ export default function OverviewPage() {
   const { data: board } = useLoad(() => api.get<BoardTask[]>(`/projects/${projectId}/tasks/board`), [projectId])
   const { data: budget } = useLoad(() => api.get<BudgetSummary>(`/projects/${projectId}/budget/summary`), [projectId])
   const { data: cases } = useLoad(() => api.get<CaseFile[]>(`/projects/${projectId}/case-files`), [projectId])
+  const { data: drawings } = useLoad(() => api.get<Drawing[]>(`/projects/${projectId}/drawings`), [projectId])
+  const { data: docs } = useLoad(() => api.get<Doc[]>(`/projects/${projectId}/documents`), [projectId])
 
   const actionable = board?.filter((t) => t.actionable) ?? []
   const inProgress = board?.filter((t) => t.status === 'in_progress') ?? []
@@ -19,6 +22,14 @@ export default function OverviewPage() {
   return (
     <>
       <h1>{project.name}</h1>
+      <GettingStarted
+        projectId={projectId!}
+        hasDrawing={(drawings?.length ?? 0) > 0}
+        hasTask={(board?.length ?? 0) > 0}
+        hasBudget={(budget?.estimatedOre ?? 0) > 0}
+        hasDocument={(docs?.length ?? 0) > 0}
+        loaded={!!(drawings && board && budget && docs)}
+      />
       <p className="page-sub">
         {statusLabel(project.kind)}
         {project.address && <> · {project.address}</>}
@@ -126,5 +137,66 @@ export default function OverviewPage() {
         </table>
       </div>
     </>
+  )
+}
+
+// "Kom godt i gang" — guider de første skridt og vinker farvel når alt er
+// gjort (eller når man lukker den).
+function GettingStarted({ projectId, hasDrawing, hasTask, hasBudget, hasDocument, loaded }: {
+  projectId: string
+  hasDrawing: boolean
+  hasTask: boolean
+  hasBudget: boolean
+  hasDocument: boolean
+  loaded: boolean
+}) {
+  const [dismissed, setDismissed] = useStoredState<'yes' | 'no'>(`hefai.gettingStarted.${projectId}`, 'no')
+
+  const items = [
+    {
+      done: hasDrawing,
+      to: 'drawings',
+      title: 'Tegn jeres grundplan',
+      desc: 'Vægge, rum, døre og vinduer — og se den i 3D bagefter.',
+    },
+    {
+      done: hasTask,
+      to: 'tasks',
+      title: 'Opret den første opgave',
+      desc: 'Fx "Ring til kommunen" eller "Indhent tilbud fra tømrer".',
+    },
+    {
+      done: hasBudget,
+      to: 'budget',
+      title: 'Læg et budget',
+      desc: 'Bare et groft overslag — Hefai holder styr på brugt/tilbage.',
+    },
+    {
+      done: hasDocument,
+      to: 'documents',
+      title: 'Gem det første dokument',
+      desc: 'Skøde, tilbud eller et billede af grunden.',
+    },
+  ]
+  const allDone = items.every((i) => i.done)
+
+  if (!loaded || dismissed === 'yes' || allDone) return null
+
+  return (
+    <div className="card getting-started" style={{ borderLeft: '3px solid var(--accent)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <h3 style={{ margin: 0 }}>Kom godt i gang ({items.filter((i) => i.done).length}/{items.length})</h3>
+        <button className="btn small secondary" onClick={() => setDismissed('yes')}>Skjul</button>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0 0' }}>
+        {items.map((item) => (
+          <li key={item.to} className={item.done ? 'done' : ''}>
+            <span className="check">{item.done ? '✅' : '⬜'}</span>
+            <Link to={item.to}><strong>{item.title}</strong></Link>
+            {!item.done && <span style={{ color: 'var(--text-dim)' }}> — {item.desc}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

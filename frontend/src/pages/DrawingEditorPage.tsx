@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Drawing, DrawingData, DrawingVersion, Opening, Point, Wall } from '../api/types'
 import { ErrorText, useLoad } from '../components'
 
+// three.js er tung — hent den først når 3D-fanen åbnes.
+const Drawing3DView = lazy(() => import('./Drawing3DView'))
+
 // The drawing canvas works in world millimetres. SVG viewBox handles
 // zoom/pan; snapping is 100 mm.
 
 const SNAP = 100
-const emptyData: DrawingData = { walls: [], rooms: [], openings: [], plot: null }
+const emptyData: DrawingData = { walls: [], rooms: [], openings: [], plot: null, trees: [] }
 
-type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'plot' | 'pan'
+type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'plot' | 'tree' | 'pan'
 
 interface ViewBox { x: number; y: number; w: number; h: number }
 
@@ -28,7 +31,10 @@ export default function DrawingEditorPage() {
   const [openingWidth, setOpeningWidth] = useState(900)
   const [pending, setPending] = useState<Point[]>([])
   const [cursor, setCursor] = useState<Point | null>(null)
-  const [selected, setSelected] = useState<{ kind: 'wall' | 'opening' | 'room'; index: number } | null>(null)
+  const [selected, setSelected] = useState<{ kind: 'wall' | 'opening' | 'room' | 'tree'; index: number } | null>(null)
+  const [view, setView] = useState<'2d' | '3d'>('2d')
+  const [treeHeight, setTreeHeight] = useState(6000)
+  const [treeCrown, setTreeCrown] = useState(4000)
   const [viewBox, setViewBox] = useState<ViewBox>({ x: -2000, y: -2000, w: 16000, h: 12000 })
   const [error, setError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState('')
@@ -109,8 +115,22 @@ export default function DrawingEditorPage() {
         heightMm: tool === 'door' ? 2100 : 1200,
       }
       setData((d) => ({ ...d, openings: [...d.openings, opening] }))
+    } else if (tool === 'tree') {
+      setData((d) => ({
+        ...d,
+        trees: [...(d.trees ?? []), { position: p, heightMm: treeHeight, crownDiameterMm: treeCrown }],
+      }))
     } else if (tool === 'select') {
-      const hit = nearestWall(rawWorld(e))
+      const world = rawWorld(e)
+      // Trees first (small targets), then walls.
+      const treeIndex = (data.trees ?? []).findIndex(
+        (t) => Math.hypot(world.x - t.position.x, world.y - t.position.y) < Math.max(t.crownDiameterMm / 2, 600),
+      )
+      if (treeIndex >= 0) {
+        setSelected({ kind: 'tree', index: treeIndex })
+        return
+      }
+      const hit = nearestWall(world)
       setSelected(hit ? { kind: 'wall', index: hit.index } : null)
     }
   }
@@ -171,6 +191,8 @@ export default function DrawingEditorPage() {
         walls: d.walls.filter((_, i) => i !== selected.index),
         openings: d.openings.filter((o) => o.wallId !== wall.id),
       }))
+    } else if (selected.kind === 'tree') {
+      setData((d) => ({ ...d, trees: (d.trees ?? []).filter((_, i) => i !== selected.index) }))
     }
     setSelected(null)
   }
@@ -202,6 +224,7 @@ export default function DrawingEditorPage() {
     { key: 'door', label: 'Dør' },
     { key: 'window', label: 'Vindue' },
     { key: 'plot', label: 'Grund/skel' },
+    { key: 'tree', label: 'Træ' },
     { key: 'pan', label: 'Panorér' },
   ]
 
@@ -213,7 +236,10 @@ export default function DrawingEditorPage() {
       </p>
 
       <div className="canvas-toolbar">
-        {tools.map((t) => (
+        <button className={`tool ${view === '2d' ? 'active' : ''}`} onClick={() => setView('2d')}>2D-tegning</button>
+        <button className={`tool ${view === '3d' ? 'active' : ''}`} onClick={() => setView('3d')}>3D-model</button>
+        <span style={{ width: 12 }} />
+        {view === '2d' && tools.map((t) => (
           <button
             key={t.key}
             className={`tool ${tool === t.key ? 'active' : ''}`}
@@ -241,9 +267,47 @@ export default function DrawingEditorPage() {
               onChange={(e) => setOpeningWidth(Number(e.target.value))} /> mm
           </label>
         )}
-        {selected && <button className="tool" onClick={deleteSelected}>Slet valgte</button>}
+        {view === '2d' && tool === 'tree' && (
+          <>
+            <label style={{ fontSize: 12.5 }}>
+              Højde{' '}
+              <input type="number" value={treeHeight} step={500} min={500} style={{ width: 70 }}
+                onChange={(e) => setTreeHeight(Number(e.target.value))} /> mm
+            </label>
+            <label style={{ fontSize: 12.5 }}>
+              Krone{' '}
+              <input type="number" value={treeCrown} step={500} min={500} style={{ width: 70 }}
+                onChange={(e) => setTreeCrown(Number(e.target.value))} /> mm
+            </label>
+          </>
+        )}
+        {view === '2d' && selected && <button className="tool" onClick={deleteSelected}>Slet valgte</button>}
+        <span style={{ flex: 1 }} />
+        <label style={{ fontSize: 12.5 }}>
+          Væghøjde{' '}
+          <input type="number" value={data.wallHeightMm || 2500} step={100} min={2000} style={{ width: 70 }}
+            onChange={(e) => setData((d) => ({ ...d, wallHeightMm: Number(e.target.value) }))} /> mm
+        </label>
+        <label style={{ fontSize: 12.5 }}>
+          Taghældning{' '}
+          <input type="number" value={data.roofAngleDeg ?? 0} step={5} min={0} max={60} style={{ width: 55 }}
+            onChange={(e) => setData((d) => ({ ...d, roofAngleDeg: Number(e.target.value) }))} /> °
+        </label>
       </div>
 
+      {view === '3d' && (
+        <>
+          <Suspense fallback={<div className="card">Indlæser 3D-visning…</div>}>
+            <Drawing3DView data={data} />
+          </Suspense>
+          <p className="hint">
+            Træk for at rotere, scroll for at zoome, højreklik-træk for at flytte. Modellen bygges direkte af
+            din 2D-tegning: vægge får væghøjden, taget følger taghældningen, og træer/grund vises som på
+            situationsplanen. Gem stadig via 2D-fanen.
+          </p>
+        </>
+      )}
+      {view === '2d' && (
       <svg
         ref={svgRef}
         className={`drawing-svg ${tool === 'pan' ? 'pan' : ''}`}
@@ -321,21 +385,32 @@ export default function DrawingEditorPage() {
             fill="none" stroke={tool === 'plot' ? '#2e7d43' : '#c9b899'} strokeWidth={viewBox.w / 400}
           />
         )}
+        {/* trees */}
+        {(data.trees ?? []).map((t, i) => (
+          <g key={`tree${i}`} opacity={0.9}>
+            <circle cx={t.position.x} cy={t.position.y} r={t.crownDiameterMm / 2}
+              fill="#cde5c8" stroke={selected?.kind === 'tree' && selected.index === i ? '#b4551e' : '#3f7d3a'}
+              strokeWidth={viewBox.w / 600} />
+            <circle cx={t.position.x} cy={t.position.y} r={150} fill="#6d4c33" />
+          </g>
+        ))}
         {cursor && tool !== 'select' && tool !== 'pan' && (
           <circle cx={cursor.x} cy={cursor.y} r={viewBox.w / 250} fill="#b4551e" />
         )}
       </svg>
+      )}
 
-      <p className="hint">
+      {view === '2d' && <p className="hint">
         {tool === 'wall' && 'Klik for at starte en væg, klik igen for at afslutte den (kæder videre) — dobbeltklik for at stoppe kæden.'}
         {tool === 'room' && 'Klik rummets hjørner, dobbeltklik for at lukke polygonen og navngive rummet.'}
         {tool === 'plot' && 'Klik skellets hjørner, dobbeltklik for at lukke. Grunden vises med grøn stiplet linje.'}
         {(tool === 'door' || tool === 'window') && 'Klik på en væg for at placere åbningen.'}
-        {tool === 'select' && 'Klik på en væg for at vælge den — brug "Slet valgte" i værktøjslinjen.'}
+        {tool === 'tree' && 'Klik på grunden for at plante et træ — højde og kronediameter sættes i værktøjslinjen.'}
+        {tool === 'select' && 'Klik på en væg eller et træ for at vælge — brug "Slet valgte" i værktøjslinjen.'}
         {tool === 'pan' && 'Træk for at panorere. Scroll for at zoome.'}
-      </p>
+      </p>}
 
-      {data.plot && (
+      {view === '2d' && data.plot && (
         <div className="form-row">
           <div className="field">
             <label>Bygningens placering på grunden — X (mm)</label>

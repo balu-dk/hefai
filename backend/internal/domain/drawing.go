@@ -57,6 +57,17 @@ type DrawingData struct {
 	Rooms    []RoomShape `json:"rooms"`
 	Openings []Opening   `json:"openings"`
 	Plot     *Plot       `json:"plot,omitempty"`
+	Trees    []Tree      `json:"trees,omitempty"`
+	// Building envelope for the 3D view (and later for calculations).
+	WallHeightMM float64 `json:"wallHeightMm,omitempty"` // default 2500 when 0
+	RoofAngleDeg float64 `json:"roofAngleDeg,omitempty"` // 0 = flat roof
+}
+
+// Tree is planted in plot coordinates (same system as Plot.Boundary).
+type Tree struct {
+	Position      Point   `json:"position"`
+	HeightMM      float64 `json:"heightMm"`
+	CrownDiameterMM float64 `json:"crownDiameterMm"`
 }
 
 type Point struct {
@@ -140,6 +151,20 @@ func (d *DrawingData) Validate() error {
 	}
 	if d.Plot != nil && len(d.Plot.Boundary) < 3 {
 		return Validation("grundens skel skal have mindst 3 punkter")
+	}
+	for i, t := range d.Trees {
+		if t.HeightMM <= 0 || t.HeightMM > 40000 {
+			return Validation(fmt.Sprintf("træ %d skal have en højde mellem 0 og 40 m", i+1))
+		}
+		if t.CrownDiameterMM <= 0 || t.CrownDiameterMM > 30000 {
+			return Validation(fmt.Sprintf("træ %d skal have en kronediameter mellem 0 og 30 m", i+1))
+		}
+	}
+	if d.WallHeightMM < 0 || d.WallHeightMM > 12000 {
+		return Validation("væghøjden skal være mellem 0 og 12 m")
+	}
+	if d.RoofAngleDeg < 0 || d.RoofAngleDeg >= 90 {
+		return Validation("taghældningen skal være mellem 0 og 90 grader")
 	}
 	return nil
 }

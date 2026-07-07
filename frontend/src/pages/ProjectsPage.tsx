@@ -57,7 +57,9 @@ export default function ProjectsPage() {
   )
 }
 
+// Projektguiden: tre små, venlige trin i stedet for én stor formular.
 function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
+  const [step, setStep] = useState(0)
   const [name, setName] = useState('')
   const [kind, setKind] = useState('new_build')
   const [address, setAddress] = useState('')
@@ -66,73 +68,113 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
   const [plotArea, setPlotArea] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
+  const kinds = [
+    { key: 'new_build', emoji: '🏠', name: 'Nybyggeri', desc: 'Vi bygger et nyt hus eller sommerhus' },
+    { key: 'renovation', emoji: '🔨', name: 'Renovering', desc: 'Vi sætter noget eksisterende i stand' },
+    { key: 'extension', emoji: '📐', name: 'Tilbygning', desc: 'Vi bygger til eller ud' },
+    { key: 'other', emoji: '✨', name: 'Andet', desc: 'Noget helt fjerde' },
+  ]
+
+  async function create() {
+    setBusy(true)
+    setError(null)
     try {
       await api.post('/projects', {
-        name,
-        kind,
-        address,
-        municipality,
-        cadastralId,
-        description,
+        name, kind, address, municipality, cadastralId, description,
         plotAreaM2: plotArea ? Number(plotArea) : null,
       })
       onDone()
     } catch (err) {
       setError((err as Error).message)
+      setBusy(false)
     }
   }
 
+  function next(e: FormEvent) {
+    e.preventDefault()
+    if (step < 2) setStep(step + 1)
+    else void create()
+  }
+
   return (
-    <Modal title="Nyt projekt" onClose={onClose}>
-      <form onSubmit={submit}>
-        <div className="form-row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Navn *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          </div>
-          <div className="field">
-            <label>Type</label>
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="new_build">Nybyggeri</option>
-              <option value="renovation">Renovering</option>
-              <option value="extension">Tilbygning</option>
-              <option value="other">Andet</option>
-            </select>
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Adresse</label>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Kommune</label>
-            <input value={municipality} onChange={(e) => setMunicipality(e.target.value)} />
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="field">
-            <label>Matrikelnr.</label>
-            <input value={cadastralId} onChange={(e) => setCadastralId(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Grundareal (m²)</label>
-            <input type="number" step="0.1" min="0" value={plotArea} onChange={(e) => setPlotArea(e.target.value)} />
-          </div>
-        </div>
-        <div className="field">
-          <label>Beskrivelse</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
+    <Modal title={['Hvad skal der bygges?', 'Hvor bygger I?', 'Klar til at gå i gang!'][step]} onClose={onClose}>
+      <p className="hint" style={{ marginTop: -6 }}>Trin {step + 1} af 3</p>
+      <form onSubmit={next}>
+        {step === 0 && (
+          <>
+            <div className="wizard-kinds">
+              {kinds.map((k) => (
+                <div key={k.key} className={`wizard-kind ${kind === k.key ? 'active' : ''}`} onClick={() => setKind(k.key)}>
+                  <div className="emoji">{k.emoji}</div>
+                  <div className="name">{k.name}</div>
+                  <div className="desc">{k.desc}</div>
+                </div>
+              ))}
+            </div>
+            <div className="field" style={{ marginTop: 10 }}>
+              <label>Hvad skal projektet hedde? *</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus
+                placeholder="Fx Sommerhuset i Marielyst" />
+            </div>
+          </>
+        )}
+        {step === 1 && (
+          <>
+            <p className="hint">
+              Alt her er valgfrit og kan udfyldes senere — men adresse og kommune hjælper, når der skal
+              søges byggetilladelse, og grundstørrelsen bruges når bebyggelsesprocenten skal regnes ud.
+            </p>
+            <div className="form-row">
+              <div className="field" style={{ flex: 2 }}>
+                <label>Adresse</label>
+                <input value={address} onChange={(e) => setAddress(e.target.value)} autoFocus />
+              </div>
+              <div className="field">
+                <label>Kommune</label>
+                <input value={municipality} onChange={(e) => setMunicipality(e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="field">
+                <label>Grundens størrelse (m²)</label>
+                <input type="number" step="0.1" min="0" value={plotArea} onChange={(e) => setPlotArea(e.target.value)}
+                  placeholder="fx 1200" />
+              </div>
+              <div className="field">
+                <label>Matrikelnr. (står på skødet)</label>
+                <input value={cadastralId} onChange={(e) => setCadastralId(e.target.value)} />
+              </div>
+            </div>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <div className="field">
+              <label>Beskriv kort hvad I drømmer om (valgfrit)</label>
+              <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)}
+                placeholder="Fx: Et sommerhus på ca. 70 m² med stort køkken-alrum og terrasse mod vest…" autoFocus />
+            </div>
+            <div className="notice">
+              Når projektet er oprettet, får du en kort rundvisning, og på Overblik venter en
+              "Kom godt i gang"-liste der guider jer igennem de første skridt.
+            </div>
+          </>
+        )}
         <ErrorText error={error} />
-        <div className="form-row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn secondary" onClick={onClose}>
-            Annullér
-          </button>
-          <button className="btn">Opret projekt</button>
+        <div className="form-row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+          <div>
+            {step > 0 && (
+              <button type="button" className="btn secondary" onClick={() => setStep(step - 1)}>Tilbage</button>
+            )}
+          </div>
+          <div className="row-actions">
+            <button type="button" className="btn secondary" onClick={onClose}>Annullér</button>
+            <button className="btn" disabled={busy || (step === 0 && !name.trim())}>
+              {step < 2 ? 'Næste' : busy ? 'Opretter…' : 'Opret projekt 🎉'}
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

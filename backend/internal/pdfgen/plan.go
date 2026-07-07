@@ -119,6 +119,17 @@ func SitePlan(m Meta, data *domain.DrawingData, drawingTitle string) ([]byte, er
 		d.pdf.Line(x1, y1, x2, y2)
 	}
 
+	// Trees: crown as circle, trunk as dot.
+	d.pdf.SetLineWidth(0.3)
+	for _, t := range data.Trees {
+		cx, cy := proj.point(t.Position)
+		r := t.CrownDiameterMM / 2 * proj.scale
+		d.pdf.SetDrawColor(60, 140, 60)
+		d.pdf.Circle(cx, cy, math.Max(r, 0.8), "D")
+		d.pdf.SetFillColor(100, 70, 40)
+		d.pdf.Circle(cx, cy, 0.5, "F")
+	}
+
 	d.pdf.SetAutoPageBreak(false, 0)
 	if m.Project.PlotAreaM2 != nil {
 		d.pdf.SetFont("Helvetica", "", 9)

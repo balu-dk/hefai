@@ -245,11 +245,20 @@ export interface Plot {
   rotationDeg: number
 }
 
+export interface Tree {
+  position: Point
+  heightMm: number
+  crownDiameterMm: number
+}
+
 export interface DrawingData {
   walls: Wall[]
   rooms: RoomShape[]
   openings: Opening[]
   plot?: Plot | null
+  trees?: Tree[]
+  wallHeightMm?: number
+  roofAngleDeg?: number
 }
 
 export type DrawingKind = 'site_plan' | 'floor_plan' | 'elevation' | 'section' | 'detail' | 'other'
