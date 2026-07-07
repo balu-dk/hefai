@@ -104,8 +104,9 @@ func run() error {
 			budget, materials, caseFiles, projects),
 		Ortho:      service.NewOrtho(cfg.OrthoWMSURL, cfg.OrthoLayer, cfg.OrthoToken, projects),
 		DrawAssist: service.NewDrawAssist(llm, cfg.AIDocsDir, drawings, projects),
-		Rules:  service.NewRules(rules, llm, cfg.AIDocsDir, projects, drawings, sources, projects),
-		Lookup: service.NewLookup(cfg.DAWABaseURL, cfg.PlandataWFSURL),
+		Rules:      service.NewRules(rules, llm, cfg.AIDocsDir, projects, drawings, sources, projects),
+		Lookup:     service.NewLookup(cfg.DAWABaseURL, cfg.PlandataWFSURL),
+		PlanImport: service.NewPlanImport(files, documents, sources, projects),
 	}
 	svc.Advisor = service.NewAdvisor(llm, cfg.AIDocsDir, phases, tasks, budget, materials,
 		caseFiles, drawings, sources, svc.Rules, projects)

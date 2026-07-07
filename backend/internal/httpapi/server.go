@@ -34,6 +34,7 @@ type Services struct {
 	Advisor    *service.Advisor
 	Rules      *service.Rules
 	Lookup     *service.Lookup
+	PlanImport *service.PlanImport
 }
 
 type Server struct {
@@ -200,4 +201,5 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/lookup/address", s.lookupAddress)
 	mux.HandleFunc("GET /api/v1/lookup/address/{addressID}", s.lookupAddressDetails)
 	mux.HandleFunc("GET /api/v1/lookup/localplans", s.lookupLocalPlans)
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/localplans/import", createUnder(s.svc.PlanImport.Import, "projectID"))
 }

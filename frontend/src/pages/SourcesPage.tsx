@@ -25,6 +25,26 @@ export default function SourcesPage() {
   const [plans, setPlans] = useState<LocalPlan[] | null>(null)
   const [planError, setPlanError] = useState<string | null>(null)
   const [planBusy, setPlanBusy] = useState(false)
+  const [importing, setImporting] = useState<string | null>(null)
+  const [importNotice, setImportNotice] = useState<string | null>(null)
+
+  async function importPlan(p: LocalPlan) {
+    setImporting(p.planId)
+    setPlanError(null)
+    setImportNotice(null)
+    try {
+      const result = await api.post<{ notice: string }>(`/projects/${projectId}/localplans/import`, {
+        name: p.name || `Lokalplan ${p.planId}`,
+        docLink: p.docLink,
+      })
+      setImportNotice(result.notice)
+      reload()
+    } catch (err) {
+      setPlanError((err as Error).message)
+    } finally {
+      setImporting(null)
+    }
+  }
 
   async function findLocalPlans() {
     if (project.utmX == null || project.utmY == null) {
@@ -101,15 +121,21 @@ export default function SourcesPage() {
             <div key={p.planId} className="form-row" style={{ alignItems: 'center' }}>
               <strong style={{ flex: 1 }}>{p.name || `Plan ${p.planId}`}</strong>
               {p.docLink && <a href={p.docLink} target="_blank" rel="noreferrer">Åbn PDF</a>}
+              {p.docLink && (
+                <button className="btn small" disabled={importing !== null} onClick={() => importPlan(p)}>
+                  {importing === p.planId ? 'Henter og indlæser…' : '⬇ Hent + indlæs automatisk'}
+                </button>
+              )}
               <button className="btn small secondary"
                 onClick={() => (setPrefill({ title: p.name || `Lokalplan ${p.planId}`, url: p.docLink }), setAdding(true))}>
-                Indlæs som kilde
+                Indsæt tekst manuelt
               </button>
             </div>
           ))}
+          {importNotice && <div className="notice" style={{ background: 'var(--green-soft)', color: 'var(--green)', borderColor: '#bfe0c6' }}>{importNotice}</div>}
           <p className="hint">
-            Åbn PDF'en, kopiér de relevante bestemmelser og indsæt teksten som kilde — så kan
-            assistenten og Lovtjek bruge den med præcise henvisninger.
+            "Hent + indlæs automatisk" downloader PDF'en til arkivet og udtrækker teksten som kilde.
+            Skannede planer uden tekstlag kræver stadig manuel indsættelse.
           </p>
         </div>
       )}
