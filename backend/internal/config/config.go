@@ -14,6 +14,18 @@ type Config struct {
 	MigrationsDir string
 	FileStoreDir  string
 	CORSOrigin    string // dev frontend origin, empty disables CORS headers
+
+	// LLM-provider (OpenAI-kompatibelt API — DeepSeek, gateways m.fl.).
+	// Tom LLMBaseURL = ingen provider; assistenten degraderer pænt.
+	LLMBaseURL string
+	LLMAPIKey  string
+	LLMModel   string
+	AIDocsDir  string // redigerbare instruktionsfiler (MD) til AI-funktioner
+
+	// Luftfoto-WMS (standard: Dataforsyningens frie danske ortofoto).
+	OrthoWMSURL string
+	OrthoLayer  string
+	OrthoToken  string
 }
 
 // FromEnv reads configuration from environment variables. JWT_SECRET and
@@ -27,6 +39,13 @@ func FromEnv() (Config, error) {
 		MigrationsDir: getenv("MIGRATIONS_DIR", "db/migrations"),
 		FileStoreDir:  getenv("FILE_STORE_DIR", "data/files"),
 		CORSOrigin:    os.Getenv("CORS_ORIGIN"),
+		LLMBaseURL:    os.Getenv("LLM_BASE_URL"), // fx https://api.deepseek.com/v1
+		LLMAPIKey:     os.Getenv("LLM_API_KEY"),
+		LLMModel:      getenv("LLM_MODEL", "deepseek-chat"),
+		AIDocsDir:     getenv("AI_DOCS_DIR", "ai-docs"),
+		OrthoWMSURL:   getenv("ORTHO_WMS_URL", "https://api.dataforsyningen.dk/orto_foraar_DAF"),
+		OrthoLayer:    getenv("ORTHO_WMS_LAYER", "orto_foraar"),
+		OrthoToken:    os.Getenv("ORTHO_TOKEN"),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

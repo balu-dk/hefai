@@ -81,14 +81,20 @@ export function kr(ore: number): string {
   return `${negative ? '−' : ''}${grouped},${rest} kr.`
 }
 
-/** Parse "12.345,67" (or "12345.67") into øre. */
+/** Parse "12.345,67", "600.000" (dansk tusindtal) eller "12345.67" til øre. */
 export function parseKr(input: string): number | null {
   const cleaned = input.trim().replace(/\s|kr\.?/gi, '')
   if (!cleaned) return null
-  // Danish format: dots are thousand separators, comma is decimal.
-  const normalized = cleaned.includes(',')
-    ? cleaned.replace(/\./g, '').replace(',', '.')
-    : cleaned
+  let normalized: string
+  if (cleaned.includes(',')) {
+    // Dansk format: punktum er tusindtalsseparator, komma er decimal.
+    normalized = cleaned.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+    // "600.000" uden komma: punktummer er tusindtalsseparatorer.
+    normalized = cleaned.replace(/\./g, '')
+  } else {
+    normalized = cleaned
+  }
   const value = Number(normalized)
   if (Number.isNaN(value)) return null
   return Math.round(value * 100)

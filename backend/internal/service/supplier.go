@@ -32,6 +32,7 @@ type SupplierPatch struct {
 	Trade         *string `json:"trade"`
 	Phone         *string `json:"phone"`
 	Email         *string `json:"email"`
+	HourlyRateOre *int64  `json:"hourlyRateOre"`
 	Notes         *string `json:"notes"`
 }
 
@@ -95,6 +96,13 @@ func applySupplierPatch(s *domain.Supplier, patch SupplierPatch) {
 	}
 	if patch.Email != nil {
 		s.Email = *patch.Email
+	}
+	if patch.HourlyRateOre != nil {
+		if *patch.HourlyRateOre <= 0 {
+			s.HourlyRateOre = nil
+		} else {
+			s.HourlyRateOre = patch.HourlyRateOre
+		}
 	}
 	if patch.Notes != nil {
 		s.Notes = *patch.Notes

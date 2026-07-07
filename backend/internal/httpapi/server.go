@@ -28,6 +28,8 @@ type Services struct {
 	Generator  *service.Generator
 	Structural *service.Structural
 	Packages   *service.Packages
+	Blueprints *service.Blueprints
+	Ortho      *service.Ortho
 }
 
 type Server struct {
@@ -171,4 +173,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/structural-packages/{packageID}/status", patchByID(s.svc.Packages.SetStatus, "packageID"))
 	mux.HandleFunc("GET /api/v1/structural-packages/{packageID}/reviews", getUnder(s.svc.Packages.ListReviews, "packageID"))
 	mux.HandleFunc("POST /api/v1/structural-packages/{packageID}/reviews", createUnder(s.svc.Packages.AddReview, "packageID"))
+
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/setup/generate", createUnder(s.svc.Blueprints.Generate, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/setup/apply", createUnder(s.svc.Blueprints.Apply, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/ortho", s.orthoImage)
+	mux.HandleFunc("GET /api/v1/ortho/status", s.orthoStatus)
 }

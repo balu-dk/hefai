@@ -188,6 +188,12 @@ function GettingStarted({ projectId, hasDrawing, hasTask, hasBudget, hasDocument
         <h3 style={{ margin: 0 }}>Kom godt i gang ({items.filter((i) => i.done).length}/{items.length})</h3>
         <button className="btn small secondary" onClick={() => setDismissed('yes')}>Skjul</button>
       </div>
+      {!hasTask && (
+        <p style={{ margin: '10px 0 0' }}>
+          🪄 <Link to="setup"><strong>Lad AI-projektstarten interviewe dig</strong></Link> og bygge hele
+          planen — opgaver, budget, rum og materialeliste — som et udkast du godkender.
+        </p>
+      )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0 0' }}>
         {items.map((item) => (
           <li key={item.to} className={item.done ? 'done' : ''}>

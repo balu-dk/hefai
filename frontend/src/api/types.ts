@@ -140,6 +140,7 @@ export interface Supplier {
   trade: string
   phone: string
   email: string
+  hourlyRateOre: number | null
   notes: string
 }
 
@@ -251,6 +252,12 @@ export interface Tree {
   crownDiameterMm: number
 }
 
+export interface GeoAnchor {
+  lat: number
+  lon: number
+  sizeM: number
+}
+
 export interface DrawingData {
   walls: Wall[]
   rooms: RoomShape[]
@@ -259,6 +266,7 @@ export interface DrawingData {
   trees?: Tree[]
   wallHeightMm?: number
   roofAngleDeg?: number
+  geo?: GeoAnchor | null
 }
 
 export type DrawingKind = 'site_plan' | 'floor_plan' | 'elevation' | 'section' | 'detail' | 'other'
@@ -428,6 +436,54 @@ export interface EngineerReviewItem {
   verdict: ReviewVerdict
   comment: string
   correctedValues: Record<string, unknown>
+}
+
+// --- AI-projektstart ------------------------------------------------------------
+
+export interface Interview {
+  goal: string
+  propertyType: string
+  sizeM2: number
+  rooms: string[]
+  features: string[]
+  budgetOre: number
+  selfBuild: string
+  timeline: string
+  notes: string
+}
+
+export interface BlueprintTask {
+  title: string
+  description: string
+  phase: string
+  dependsOn: number[]
+}
+
+export interface Blueprint {
+  projectDescription: string
+  caseDescription: string
+  needsBuildingCase: boolean
+  rooms: { name: string; kind: string; areaM2: number | null }[]
+  tasks: BlueprintTask[]
+  budgetItems: { description: string; category: string; phase: string; estimatedAmountOre: number }[]
+  materials: { name: string; spec: string; quantity: number; unit: string; phase: string }[]
+  notes: string
+}
+
+export interface BlueprintResult {
+  blueprint: Blueprint
+  source: 'llm' | 'template'
+  provider: string
+  notice?: string
+}
+
+export interface ApplyResult {
+  roomsCreated: number
+  tasksCreated: number
+  dependenciesLinked: number
+  budgetItemsCreated: number
+  materialsCreated: number
+  caseFileId: string | null
 }
 
 export interface EngineerReview {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, kr, parseKr } from '../api/client'
 import type { Supplier } from '../api/types'
 import { confirmDelete, Empty, ErrorText, Modal, useLoad } from '../components'
 
@@ -30,6 +30,7 @@ export default function SuppliersPage() {
             <div style={{ fontSize: 13 }}>
               {s.phone && <div>☎ {s.phone}</div>}
               {s.email && <div>✉ {s.email}</div>}
+              {s.hourlyRateOre != null && <div>⏱ {kr(s.hourlyRateOre)}/time</div>}
             </div>
             {s.notes && <p style={{ fontSize: 13, marginBottom: 0 }}>{s.notes}</p>}
           </div>
@@ -63,12 +64,21 @@ function SupplierModal({ supplier, projectId, onDone, onClose }: {
   const [trade, setTrade] = useState(supplier?.trade ?? '')
   const [phone, setPhone] = useState(supplier?.phone ?? '')
   const [email, setEmail] = useState(supplier?.email ?? '')
+  const [hourlyRate, setHourlyRate] = useState(
+    supplier?.hourlyRateOre != null ? (supplier.hourlyRateOre / 100).toFixed(2).replace('.', ',') : '')
   const [notes, setNotes] = useState(supplier?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    const body = { companyName, contactPerson, trade, phone, email, notes }
+    const body: Record<string, unknown> = { companyName, contactPerson, trade, phone, email, notes }
+    if (hourlyRate.trim()) {
+      const ore = parseKr(hourlyRate)
+      if (ore === null) return setError('Ugyldig timepris — brug fx 585,00')
+      body.hourlyRateOre = ore
+    } else if (supplier?.hourlyRateOre != null) {
+      body.hourlyRateOre = -1 // ryd feltet
+    }
     try {
       if (supplier) await api.patch(`/suppliers/${supplier.id}`, body)
       else await api.post(`/projects/${projectId}/suppliers`, body)
@@ -109,6 +119,10 @@ function SupplierModal({ supplier, projectId, onDone, onClose }: {
           <div className="field">
             <label>E-mail</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Timepris (kr.)</label>
+            <input value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="585,00" />
           </div>
         </div>
         <div className="field">

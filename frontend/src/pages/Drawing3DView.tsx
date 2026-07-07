@@ -10,7 +10,7 @@ import type { DrawingData, Point } from '../api/types'
 
 const MM = 0.001
 
-export default function Drawing3DView({ data }: { data: DrawingData }) {
+export default function Drawing3DView({ data, orthoURL }: { data: DrawingData; orthoURL?: string | null }) {
   const mountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -62,6 +62,26 @@ export default function Drawing3DView({ data }: { data: DrawingData }) {
     base.position.y = -0.02
     base.receiveShadow = true
     groundGroup.add(base)
+
+    // Luftfoto draperet på jorden, centreret på grunden — samme udsnit som
+    // 2D-baggrunden, så tegning og virkelighed flugter.
+    if (orthoURL && data.geo) {
+      const sizeM = data.geo.sizeM || 150
+      const center = data.plot && data.plot.boundary.length >= 3
+        ? polygonCentroid(data.plot.boundary)
+        : { x: 0, y: 0 }
+      new THREE.TextureLoader().load(orthoURL, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace
+        const photo = new THREE.Mesh(
+          new THREE.PlaneGeometry(sizeM, sizeM),
+          new THREE.MeshLambertMaterial({ map: texture }),
+        )
+        photo.rotation.x = -Math.PI / 2
+        photo.position.set(center.x * MM, 0.01, center.y * MM)
+        photo.receiveShadow = true
+        groundGroup.add(photo)
+      })
+    }
 
     // --- Bygning (transformeret til grunden) ---------------------------------
     const building = new THREE.Group()
@@ -233,9 +253,17 @@ export default function Drawing3DView({ data }: { data: DrawingData }) {
       renderer.dispose()
       mount.removeChild(renderer.domElement)
     }
-  }, [data])
+  }, [data, orthoURL])
 
   return <div ref={mountRef} style={{ width: '100%', height: '58vh', borderRadius: 8, overflow: 'hidden' }} />
+}
+
+function polygonCentroid(polygon: Point[]): Point {
+  const n = polygon.length || 1
+  return {
+    x: polygon.reduce((s, p) => s + p.x, 0) / n,
+    y: polygon.reduce((s, p) => s + p.y, 0) / n,
+  }
 }
 
 // Kameraet fokuserer på bygningen (transformeret til grunden) — findes der

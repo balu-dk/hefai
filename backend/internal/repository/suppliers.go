@@ -17,12 +17,12 @@ type Suppliers struct {
 func NewSuppliers(db *pgxpool.Pool) *Suppliers { return &Suppliers{db: db} }
 
 const supplierColumns = `id, project_id, company_name, contact_person, trade, phone, email,
-	notes, created_at, updated_at`
+	(hourly_rate*100)::bigint, notes, created_at, updated_at`
 
 func scanSupplier(row pgx.Row) (*domain.Supplier, error) {
 	var s domain.Supplier
 	err := row.Scan(&s.ID, &s.ProjectID, &s.CompanyName, &s.ContactPerson, &s.Trade,
-		&s.Phone, &s.Email, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
+		&s.Phone, &s.Email, &s.HourlyRateOre, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -31,10 +31,12 @@ func scanSupplier(row pgx.Row) (*domain.Supplier, error) {
 
 func (r *Suppliers) Create(ctx context.Context, s *domain.Supplier) (*domain.Supplier, error) {
 	return scanSupplier(r.db.QueryRow(ctx, `
-		INSERT INTO suppliers (project_id, company_name, contact_person, trade, phone, email, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO suppliers (project_id, company_name, contact_person, trade, phone, email,
+			hourly_rate, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::bigint::numeric/100, $8)
 		RETURNING `+supplierColumns,
-		s.ProjectID, s.CompanyName, s.ContactPerson, s.Trade, s.Phone, s.Email, s.Notes))
+		s.ProjectID, s.CompanyName, s.ContactPerson, s.Trade, s.Phone, s.Email,
+		s.HourlyRateOre, s.Notes))
 }
 
 func (r *Suppliers) Get(ctx context.Context, id uuid.UUID) (*domain.Supplier, error) {
@@ -65,10 +67,11 @@ func (r *Suppliers) ListByProject(ctx context.Context, projectID uuid.UUID) ([]*
 func (r *Suppliers) Update(ctx context.Context, s *domain.Supplier) (*domain.Supplier, error) {
 	return scanSupplier(r.db.QueryRow(ctx, `
 		UPDATE suppliers SET company_name = $2, contact_person = $3, trade = $4,
-			phone = $5, email = $6, notes = $7
+			phone = $5, email = $6, hourly_rate = $7::bigint::numeric/100, notes = $8
 		WHERE id = $1
 		RETURNING `+supplierColumns,
-		s.ID, s.CompanyName, s.ContactPerson, s.Trade, s.Phone, s.Email, s.Notes))
+		s.ID, s.CompanyName, s.ContactPerson, s.Trade, s.Phone, s.Email,
+		s.HourlyRateOre, s.Notes))
 }
 
 func (r *Suppliers) Delete(ctx context.Context, id uuid.UUID) error {

@@ -71,9 +71,14 @@ func run() error {
 		return err
 	}
 
-	// LLM-provideren vælges senere; indtil da svarer assistenten med rene
-	// kildeuddrag (retrieval virker, formulerede svar er slået fra).
+	// LLM-provider: sæt LLM_BASE_URL (+ LLM_API_KEY, LLM_MODEL) for at
+	// aktivere assistent og AI-projektstart. Uden konfiguration degraderer
+	// begge pænt (kildeuddrag hhv. skabelon-blueprint).
 	var llm ai.Provider = ai.Unconfigured{}
+	if cfg.LLMBaseURL != "" {
+		llm = ai.NewOpenAICompatible(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel)
+		slog.Info("llm provider configured", "model", cfg.LLMModel, "base", cfg.LLMBaseURL)
+	}
 
 	svc := httpapi.Services{
 		Auth:      service.NewAuth(users, tokens),
@@ -94,6 +99,9 @@ func run() error {
 			projects, documents, files, projects),
 		Structural: service.NewStructural(structural, projects),
 		Packages:   service.NewPackages(packages, structural, projects, documents, files, projects),
+		Blueprints: service.NewBlueprints(llm, cfg.AIDocsDir, projects, phases, rooms, tasks,
+			budget, materials, caseFiles, projects),
+		Ortho: service.NewOrtho(cfg.OrthoWMSURL, cfg.OrthoLayer, cfg.OrthoToken, projects),
 	}
 
 	server := &http.Server{

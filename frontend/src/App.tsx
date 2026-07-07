@@ -18,6 +18,7 @@ import DrawingEditorPage from './pages/DrawingEditorPage'
 import SourcesPage from './pages/SourcesPage'
 import AssistantPage from './pages/AssistantPage'
 import StructuralPage from './pages/StructuralPage'
+import SetupWizardPage from './pages/SetupWizardPage'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/" element={<ProjectsPage />} />
       <Route path="/projects/:projectId" element={<ProjectShell />}>
         <Route index element={<OverviewPage />} />
+        <Route path="setup" element={<SetupWizardPage />} />
         <Route path="phases" element={<PhasesPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="budget" element={<BudgetPage />} />

@@ -61,6 +61,17 @@ type DrawingData struct {
 	// Building envelope for the 3D view (and later for calculations).
 	WallHeightMM float64 `json:"wallHeightMm,omitempty"` // default 2500 when 0
 	RoofAngleDeg float64 `json:"roofAngleDeg,omitempty"` // 0 = flat roof
+	// Geo anchors the drawing to the real world so an orthophoto
+	// (satellit-/luftfoto) can be draped under plot and building.
+	Geo *GeoAnchor `json:"geo,omitempty"`
+}
+
+// GeoAnchor is the real-world point at the plot centroid (or drawing origin
+// when no plot is drawn), plus the photo window size in metres.
+type GeoAnchor struct {
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	SizeM float64 `json:"sizeM"` // default 150 when 0
 }
 
 // Tree is planted in plot coordinates (same system as Plot.Boundary).
@@ -162,6 +173,14 @@ func (d *DrawingData) Validate() error {
 	}
 	if d.WallHeightMM < 0 || d.WallHeightMM > 12000 {
 		return Validation("væghøjden skal være mellem 0 og 12 m")
+	}
+	if d.Geo != nil {
+		if d.Geo.Lat < -90 || d.Geo.Lat > 90 || d.Geo.Lon < -180 || d.Geo.Lon > 180 {
+			return Validation("geokoordinaterne er ugyldige")
+		}
+		if d.Geo.SizeM < 0 || d.Geo.SizeM > 2000 {
+			return Validation("fotoudsnittet skal være mellem 0 og 2000 m")
+		}
 	}
 	if d.RoofAngleDeg < 0 || d.RoofAngleDeg >= 90 {
 		return Validation("taghældningen skal være mellem 0 og 90 grader")

@@ -14,6 +14,7 @@ type Supplier struct {
 	Trade         string    `json:"trade"`
 	Phone         string    `json:"phone"`
 	Email         string    `json:"email"`
+	HourlyRateOre *int64    `json:"hourlyRateOre"` // timepris i øre, valgfri
 	Notes         string    `json:"notes"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`

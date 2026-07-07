@@ -69,9 +69,10 @@ cd frontend && npm install && npm run dev
 Tests: `cd backend && go test ./...` — inkl. beregningstests mod håndregnede
 værdier, cykel-detektion, chunker og board-logik.
 
-## Deploy (Coolify/Hetzner)
+## Deploy
 
-Selvhostet via Docker Compose — ingen tredjeparts-SaaS til kernefunktioner:
+Selvhostet via Docker Compose på enhver Docker-vært — ingen tredjeparts-SaaS
+til kernefunktioner:
 
 ```bash
 export JWT_SECRET=$(openssl rand -hex 32)
@@ -80,9 +81,23 @@ docker compose up -d --build
 # → http://<host>:8090
 ```
 
-I Coolify: opret en Docker Compose-ressource på dette repo og sæt
-`JWT_SECRET`/`POSTGRES_PASSWORD` som miljøvariabler. Uploads ligger i
+Platforme med Docker Compose-understøttelse kan pege direkte på dette repo;
+sæt `JWT_SECRET`/`POSTGRES_PASSWORD` som miljøvariabler. Uploads ligger i
 `files`-volumen, databasen i `pgdata`.
+
+### Valgfrie integrationer (miljøvariabler)
+
+| Variabel | Effekt |
+| --- | --- |
+| `LLM_BASE_URL` | OpenAI-kompatibelt endpoint (fx `https://api.deepseek.com/v1` eller en gateway). Aktiverer AI-assistentens formulerede svar og LLM-genererede projektplaner. |
+| `LLM_API_KEY`, `LLM_MODEL` | Nøgle og modelnavn (standard `deepseek-chat`). |
+| `AI_DOCS_DIR` | Mappe med redigerbare MD-instruktioner til AI-funktionerne (standard `ai-docs/` — se `blueprint.md`). |
+| `ORTHO_TOKEN` | Gratis token fra dataforsyningen.dk. Aktiverer danske luftfotos under 2D-tegningen og i 3D-modellen. |
+| `ORTHO_WMS_URL`, `ORTHO_WMS_LAYER` | Alternativ WMS-fototjeneste (standard Dataforsyningens ortofoto). |
+
+Uden disse degraderer alt pænt: assistenten viser rene kildeuddrag,
+AI-projektstarten bruger den deterministiske skabelon, og luftfoto-felterne
+forklarer hvordan de slås til.
 
 ## Database
 

@@ -18,7 +18,7 @@ type Tool = 'select' | 'wall' | 'room' | 'door' | 'window' | 'plot' | 'tree' | '
 interface ViewBox { x: number; y: number; w: number; h: number }
 
 export default function DrawingEditorPage() {
-  const { drawingId } = useParams()
+  const { drawingId, projectId } = useParams()
   const { data: drawing } = useLoad(() => api.get<Drawing>(`/drawings/${drawingId}`), [drawingId])
   const { data: versions, reload: reloadVersions } = useLoad(
     () => api.get<DrawingVersion[]>(`/drawings/${drawingId}/versions`), [drawingId])
@@ -35,6 +35,32 @@ export default function DrawingEditorPage() {
   const [view, setView] = useState<'2d' | '3d'>('2d')
   const [treeHeight, setTreeHeight] = useState(6000)
   const [treeCrown, setTreeCrown] = useState(4000)
+  const [orthoURL, setOrthoURL] = useState<string | null>(null)
+  const { data: orthoStatus } = useLoad(() => api.get<{ configured: boolean }>(`/ortho/status`), [])
+
+  // Hent luftfoto når tegningen har en geo-forankring.
+  const geoKey = data.geo ? `${data.geo.lat},${data.geo.lon},${data.geo.sizeM}` : ''
+  useEffect(() => {
+    if (!data.geo || !orthoStatus?.configured) {
+      setOrthoURL(null)
+      return
+    }
+    let revoked: string | null = null
+    const g = data.geo
+    fetch(`/api/v1/projects/${projectId}/ortho?lat=${g.lat}&lon=${g.lon}&sizeM=${g.sizeM || 150}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('hefai.token')}` },
+    })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('foto kunne ikke hentes'))))
+      .then((blob) => {
+        revoked = URL.createObjectURL(blob)
+        setOrthoURL(revoked)
+      })
+      .catch(() => setOrthoURL(null))
+    return () => {
+      if (revoked) URL.revokeObjectURL(revoked)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoKey, orthoStatus?.configured, projectId])
   const [viewBox, setViewBox] = useState<ViewBox>({ x: -2000, y: -2000, w: 16000, h: 12000 })
   const [error, setError] = useState<string | null>(null)
   const [saveNote, setSaveNote] = useState('')
@@ -298,7 +324,7 @@ export default function DrawingEditorPage() {
       {view === '3d' && (
         <>
           <Suspense fallback={<div className="card">Indlæser 3D-visning…</div>}>
-            <Drawing3DView data={data} />
+            <Drawing3DView data={data} orthoURL={orthoURL} />
           </Suspense>
           <p className="hint">
             Træk for at rotere, scroll for at zoome, højreklik-træk for at flytte. Modellen bygges direkte af
@@ -321,6 +347,22 @@ export default function DrawingEditorPage() {
         onMouseLeave={() => (panState.current = null)}
         onWheel={handleWheel}
       >
+        {/* luftfoto under alt andet, centreret på grunden */}
+        {orthoURL && (() => {
+          const c = photoCenter(data)
+          const size = (data.geo?.sizeM || 150) * 1000
+          return (
+            <image
+              href={orthoURL}
+              x={c.x - size / 2}
+              y={c.y - size / 2}
+              width={size}
+              height={size}
+              opacity={0.85}
+              preserveAspectRatio="none"
+            />
+          )
+        })()}
         <Grid viewBox={viewBox} />
         {/* plot boundary */}
         {data.plot && data.plot.boundary.length >= 3 && (
@@ -410,6 +452,42 @@ export default function DrawingEditorPage() {
         {tool === 'pan' && 'Træk for at panorere. Scroll for at zoome.'}
       </p>}
 
+      <div className="form-row" style={{ alignItems: 'flex-end' }}>
+        <div className="field">
+          <label>Luftfoto — breddegrad (lat)</label>
+          <input type="number" step="0.0001" value={data.geo?.lat ?? ''} placeholder="54.7639"
+            onChange={(e) => setData((d) => ({
+              ...d,
+              geo: { lat: Number(e.target.value), lon: d.geo?.lon ?? 0, sizeM: d.geo?.sizeM ?? 150 },
+            }))} />
+        </div>
+        <div className="field">
+          <label>Længdegrad (lon)</label>
+          <input type="number" step="0.0001" value={data.geo?.lon ?? ''} placeholder="11.9702"
+            onChange={(e) => setData((d) => ({
+              ...d,
+              geo: { lat: d.geo?.lat ?? 0, lon: Number(e.target.value), sizeM: d.geo?.sizeM ?? 150 },
+            }))} />
+        </div>
+        <div className="field">
+          <label>Udsnit (m)</label>
+          <input type="number" step="10" min="20" max="2000" value={data.geo?.sizeM ?? 150}
+            onChange={(e) => setData((d) => d.geo
+              ? { ...d, geo: { ...d.geo, sizeM: Number(e.target.value) } }
+              : d)} />
+        </div>
+        {data.geo && (
+          <button className="btn small secondary" onClick={() => setData((d) => ({ ...d, geo: null }))}>
+            Fjern foto
+          </button>
+        )}
+        <span className="hint" style={{ margin: 0 }}>
+          {orthoStatus?.configured
+            ? 'Find koordinaterne på fx Google Maps (højreklik på grunden) — fotoet lægges under tegningen og i 3D.'
+            : 'Luftfoto kræver et gratis token fra dataforsyningen.dk — sæt ORTHO_TOKEN på serveren.'}
+        </span>
+      </div>
+
       {view === '2d' && data.plot && (
         <div className="form-row">
           <div className="field">
@@ -480,6 +558,12 @@ function Grid({ viewBox }: { viewBox: ViewBox }) {
     lines.push(<line key={`h${y}`} x1={viewBox.x} y1={y} x2={viewBox.x + viewBox.w} y2={y} stroke="#f0ede7" strokeWidth={viewBox.w / 1200} />)
   }
   return <g>{lines}</g>
+}
+
+// Fotoet centreres på grundens midte — eller tegningens origo uden grund.
+function photoCenter(data: DrawingData): Point {
+  if (data.plot && data.plot.boundary.length >= 3) return centroid(data.plot.boundary)
+  return { x: 0, y: 0 }
 }
 
 function centroid(polygon: Point[]): Point {
