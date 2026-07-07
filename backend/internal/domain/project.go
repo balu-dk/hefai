@@ -74,6 +74,10 @@ type Project struct {
 	Municipality string        `json:"municipality"`
 	CadastralID  string        `json:"cadastralId"`
 	PlotAreaM2   *float64      `json:"plotAreaM2"`
+	Latitude     *float64      `json:"latitude"`
+	Longitude    *float64      `json:"longitude"`
+	UTMX         *float64      `json:"utmX"`
+	UTMY         *float64      `json:"utmY"`
 	CreatedBy    uuid.UUID     `json:"createdBy"`
 	CreatedAt    time.Time     `json:"createdAt"`
 	UpdatedAt    time.Time     `json:"updatedAt"`

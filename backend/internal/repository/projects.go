@@ -17,16 +17,18 @@ type Projects struct {
 func NewProjects(db *pgxpool.Pool) *Projects { return &Projects{db: db} }
 
 const projectColumns = `id, name, description, kind, status, address, municipality,
-	cadastral_id, plot_area_m2, created_by, created_at, updated_at`
+	cadastral_id, plot_area_m2, latitude, longitude, utm_x, utm_y, created_by, created_at, updated_at`
 
 // projectColumnsQualified is for queries joining other tables.
 const projectColumnsQualified = `p.id, p.name, p.description, p.kind, p.status, p.address,
-	p.municipality, p.cadastral_id, p.plot_area_m2, p.created_by, p.created_at, p.updated_at`
+	p.municipality, p.cadastral_id, p.plot_area_m2, p.latitude, p.longitude, p.utm_x, p.utm_y,
+	p.created_by, p.created_at, p.updated_at`
 
 func scanProject(row pgx.Row) (*domain.Project, error) {
 	var p domain.Project
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Kind, &p.Status, &p.Address,
-		&p.Municipality, &p.CadastralID, &p.PlotAreaM2, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
+		&p.Municipality, &p.CadastralID, &p.PlotAreaM2, &p.Latitude, &p.Longitude,
+		&p.UTMX, &p.UTMY, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -44,11 +46,11 @@ func (r *Projects) Create(ctx context.Context, p *domain.Project) (*domain.Proje
 
 	created, err := scanProject(tx.QueryRow(ctx, `
 		INSERT INTO projects (name, description, kind, status, address, municipality,
-			cadastral_id, plot_area_m2, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			cadastral_id, plot_area_m2, latitude, longitude, utm_x, utm_y, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING `+projectColumns,
 		p.Name, p.Description, p.Kind, p.Status, p.Address, p.Municipality,
-		p.CadastralID, p.PlotAreaM2, p.CreatedBy))
+		p.CadastralID, p.PlotAreaM2, p.Latitude, p.Longitude, p.UTMX, p.UTMY, p.CreatedBy))
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +105,13 @@ func (r *Projects) ListForUser(ctx context.Context, userID uuid.UUID) ([]*domain
 func (r *Projects) Update(ctx context.Context, p *domain.Project) (*domain.Project, error) {
 	return scanProject(r.db.QueryRow(ctx, `
 		UPDATE projects SET name = $2, description = $3, kind = $4, status = $5,
-			address = $6, municipality = $7, cadastral_id = $8, plot_area_m2 = $9
+			address = $6, municipality = $7, cadastral_id = $8, plot_area_m2 = $9,
+			latitude = $10, longitude = $11, utm_x = $12, utm_y = $13
 		WHERE id = $1
 		RETURNING `+projectColumns,
 		p.ID, p.Name, p.Description, p.Kind, p.Status, p.Address,
-		p.Municipality, p.CadastralID, p.PlotAreaM2))
+		p.Municipality, p.CadastralID, p.PlotAreaM2, p.Latitude, p.Longitude,
+		p.UTMX, p.UTMY))
 }
 
 func (r *Projects) Delete(ctx context.Context, id uuid.UUID) error {

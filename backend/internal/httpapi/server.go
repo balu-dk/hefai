@@ -33,6 +33,7 @@ type Services struct {
 	DrawAssist *service.DrawAssist
 	Advisor    *service.Advisor
 	Rules      *service.Rules
+	Lookup     *service.Lookup
 }
 
 type Server struct {
@@ -195,4 +196,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/rules/{ruleID}", deleteByID(s.svc.Rules.Delete, "ruleID"))
 	mux.HandleFunc("POST /api/v1/projects/{projectID}/rules/extract", createUnder(s.svc.Rules.Extract, "projectID"))
 	mux.HandleFunc("GET /api/v1/projects/{projectID}/rules/evaluation", getUnder(s.svc.Rules.Evaluate, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/lookup/address", s.lookupAddress)
+	mux.HandleFunc("GET /api/v1/lookup/address/{addressID}", s.lookupAddressDetails)
+	mux.HandleFunc("GET /api/v1/lookup/localplans", s.lookupLocalPlans)
 }

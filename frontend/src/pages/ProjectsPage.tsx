@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Project } from '../api/types'
+import type { AddressDetails, AddressSuggestion, Project } from '../api/types'
 import { Empty, ErrorText, Modal, StatusBadge, statusLabel, useLoad } from '../components'
 import { useAuth } from '../auth'
 
@@ -57,7 +57,17 @@ export default function ProjectsPage() {
   )
 }
 
-// Projektguiden: tre små, venlige trin i stedet for én stor formular.
+// Anbefalede dokumenter der spørges efter helt fra start. Manglende
+// dokumenter bliver automatisk til opgaver.
+const startDocuments = [
+  { key: 'skoede', label: 'Skøde / købsaftale', hint: 'ejerforhold og matrikel' },
+  { key: 'bbr', label: 'BBR-meddelelse', hint: 'registrerede bygninger og arealer' },
+  { key: 'lokalplan', label: 'Lokalplan', hint: 'Hefai kan finde den ud fra adressen' },
+  { key: 'tegninger', label: 'Eksisterende tegninger', hint: 'ved renovering/tilbygning' },
+  { key: 'forsikring', label: 'Forsikringspolice', hint: 'husk entrepriseforsikring ved større arbejder' },
+]
+
+// Projektguiden: fire små, venlige trin i stedet for én stor formular.
 function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
   const [step, setStep] = useState(0)
   const [name, setName] = useState('')
@@ -66,9 +76,51 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
   const [municipality, setMunicipality] = useState('')
   const [cadastralId, setCadastralId] = useState('')
   const [plotArea, setPlotArea] = useState('')
+  const [geo, setGeo] = useState<AddressDetails | null>(null)
   const [description, setDescription] = useState('')
+  const [haveDocs, setHaveDocs] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // Adressesøgning mod DAWA (debounced). pickedText stopper gen-søgning
+  // efter et valg.
+  const [addressQuery, setAddressQuery] = useState('')
+  const [pickedText, setPickedText] = useState('')
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
+  const [lookupBusy, setLookupBusy] = useState(false)
+  useEffect(() => {
+    if (addressQuery.trim().length < 3 || addressQuery === pickedText) {
+      setSuggestions([])
+      return
+    }
+    const timer = setTimeout(() => {
+      api.get<AddressSuggestion[]>(`/lookup/address?q=${encodeURIComponent(addressQuery)}`)
+        .then(setSuggestions)
+        .catch(() => setSuggestions([]))
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [addressQuery, pickedText])
+
+  async function pickAddress(s: AddressSuggestion) {
+    setSuggestions([])
+    setPickedText(s.text)
+    setAddressQuery(s.text)
+    setAddress(s.text)
+    setLookupBusy(true)
+    setError(null)
+    try {
+      const d = await api.get<AddressDetails>(`/lookup/address/${s.id}`)
+      setGeo(d)
+      setAddress(d.address || s.text)
+      setMunicipality(d.municipality)
+      setCadastralId(d.cadastralId)
+      if (d.plotAreaM2 != null) setPlotArea(String(d.plotAreaM2))
+    } catch (err) {
+      setError('Detaljeopslag fejlede (' + (err as Error).message + ') — udfyld felterne manuelt.')
+    } finally {
+      setLookupBusy(false)
+    }
+  }
 
   const kinds = [
     { key: 'new_build', emoji: '🏠', name: 'Nybyggeri', desc: 'Vi bygger et nyt hus eller sommerhus' },
@@ -81,10 +133,23 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
     setBusy(true)
     setError(null)
     try {
-      await api.post('/projects', {
+      const project = await api.post<Project>('/projects', {
         name, kind, address, municipality, cadastralId, description,
         plotAreaM2: plotArea ? Number(plotArea) : null,
+        latitude: geo?.lat ?? null,
+        longitude: geo?.lon ?? null,
+        utmX: geo?.utmX ?? null,
+        utmY: geo?.utmY ?? null,
       })
+      // Manglende dokumenter bliver til konkrete opgaver fra dag ét.
+      for (const doc of startDocuments) {
+        if (!haveDocs[doc.key]) {
+          await api.post(`/projects/${project.id}/tasks`, {
+            title: `Skaf og upload: ${doc.label}`,
+            description: doc.hint,
+          })
+        }
+      }
       onDone()
     } catch (err) {
       setError((err as Error).message)
@@ -94,13 +159,13 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
 
   function next(e: FormEvent) {
     e.preventDefault()
-    if (step < 2) setStep(step + 1)
+    if (step < 3) setStep(step + 1)
     else void create()
   }
 
   return (
-    <Modal title={['Hvad skal der bygges?', 'Hvor bygger I?', 'Klar til at gå i gang!'][step]} onClose={onClose}>
-      <p className="hint" style={{ marginTop: -6 }}>Trin {step + 1} af 3</p>
+    <Modal title={['Hvad skal der bygges?', 'Hvor bygger I?', 'Hvilke dokumenter har I?', 'Klar til at gå i gang!'][step]} onClose={onClose}>
+      <p className="hint" style={{ marginTop: -6 }}>Trin {step + 1} af 4</p>
       <form onSubmit={next}>
         {step === 0 && (
           <>
@@ -123,13 +188,40 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
         {step === 1 && (
           <>
             <p className="hint">
-              Alt her er valgfrit og kan udfyldes senere — men adresse og kommune hjælper, når der skal
-              søges byggetilladelse, og grundstørrelsen bruges når bebyggelsesprocenten skal regnes ud.
+              Søg adressen frem, så henter Hefai selv kommune, matrikelnummer, grundareal og
+              koordinater fra de officielle registre (gratis og automatisk).
             </p>
+            <div className="field" style={{ position: 'relative', marginBottom: 10 }}>
+              <label>Søg adressen</label>
+              <input value={addressQuery} onChange={(e) => setAddressQuery(e.target.value)} autoFocus
+                placeholder="Fx Strandvejen 12, Væggerløse" />
+              {suggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                  background: '#fff', border: '1px solid var(--border)', borderRadius: 6,
+                  boxShadow: 'var(--shadow)', maxHeight: 220, overflowY: 'auto',
+                }}>
+                  {suggestions.map((s) => (
+                    <div key={s.id + s.text} className="address-suggestion"
+                      style={{ padding: '7px 10px', cursor: 'pointer' }}
+                      onClick={() => pickAddress(s)}>
+                      {s.text}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {lookupBusy && <p className="hint">Henter matrikel, grundareal og koordinater…</p>}
+            {geo && !lookupBusy && (
+              <div className="notice" style={{ background: 'var(--green-soft)', color: 'var(--green)', borderColor: '#bfe0c6' }}>
+                ✓ Fundet: {geo.municipality} Kommune · matrikel {geo.cadastralId || 'ukendt'}
+                {geo.plotAreaM2 != null && <> · grund {geo.plotAreaM2} m²</>} · koordinater hentet til luftfoto
+              </div>
+            )}
             <div className="form-row">
               <div className="field" style={{ flex: 2 }}>
                 <label>Adresse</label>
-                <input value={address} onChange={(e) => setAddress(e.target.value)} autoFocus />
+                <input value={address} onChange={(e) => setAddress(e.target.value)} />
               </div>
               <div className="field">
                 <label>Kommune</label>
@@ -143,13 +235,29 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
                   placeholder="fx 1200" />
               </div>
               <div className="field">
-                <label>Matrikelnr. (står på skødet)</label>
+                <label>Matrikel</label>
                 <input value={cadastralId} onChange={(e) => setCadastralId(e.target.value)} />
               </div>
             </div>
           </>
         )}
         {step === 2 && (
+          <>
+            <p className="hint">
+              Sæt kryds ved det I allerede har liggende. Det der mangler, bliver automatisk til
+              opgaver, så intet glemmes.
+            </p>
+            {startDocuments.map((doc) => (
+              <label key={doc.key} style={{ display: 'block', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!haveDocs[doc.key]}
+                  onChange={(e) => setHaveDocs((h) => ({ ...h, [doc.key]: e.target.checked }))} />{' '}
+                <strong>{doc.label}</strong>
+                <span style={{ color: 'var(--text-dim)' }}> — {doc.hint}</span>
+              </label>
+            ))}
+          </>
+        )}
+        {step === 3 && (
           <>
             <div className="field">
               <label>Beskriv kort hvad I drømmer om (valgfrit)</label>
@@ -172,7 +280,7 @@ function CreateProjectModal({ onDone, onClose }: { onDone: () => void; onClose: 
           <div className="row-actions">
             <button type="button" className="btn secondary" onClick={onClose}>Annullér</button>
             <button className="btn" disabled={busy || (step === 0 && !name.trim())}>
-              {step < 2 ? 'Næste' : busy ? 'Opretter…' : 'Opret projekt 🎉'}
+              {step < 3 ? 'Næste' : busy ? 'Opretter…' : 'Opret projekt 🎉'}
             </button>
           </div>
         </div>

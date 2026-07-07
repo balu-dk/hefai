@@ -26,6 +26,11 @@ type Config struct {
 	OrthoWMSURL string
 	OrthoLayer  string
 	OrthoToken  string
+
+	// Frie, nøglefri opslagstjenester: adresser (DAWA) og lokalplaner
+	// (Plandata WFS).
+	DAWABaseURL    string
+	PlandataWFSURL string
 }
 
 // FromEnv reads configuration from environment variables. JWT_SECRET and
@@ -46,6 +51,8 @@ func FromEnv() (Config, error) {
 		OrthoWMSURL:   getenv("ORTHO_WMS_URL", "https://api.dataforsyningen.dk/orto_foraar_DAF"),
 		OrthoLayer:    getenv("ORTHO_WMS_LAYER", "orto_foraar"),
 		OrthoToken:    os.Getenv("ORTHO_TOKEN"),
+		DAWABaseURL:   getenv("DAWA_BASE_URL", "https://api.dataforsyningen.dk"),
+		PlandataWFSURL: getenv("PLANDATA_WFS_URL", "https://geoserver.plandata.dk/geoserver/wfs"),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

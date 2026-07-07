@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { SourceDocument, SourceHit, SourceKind } from '../api/types'
+import type { LocalPlan, SourceDocument, SourceHit, SourceKind } from '../api/types'
 import { confirmDelete, Empty, ErrorText, Modal, useLoad } from '../components'
+import type { ProjectContext } from './ProjectShell'
 
 const kindLabels: Record<SourceKind, string> = {
   br18: 'BR18',
@@ -14,11 +15,32 @@ const kindLabels: Record<SourceKind, string> = {
 
 export default function SourcesPage() {
   const { projectId } = useParams()
+  const { project } = useOutletContext<ProjectContext>()
   const { data: sources, error, reload } = useLoad(
     () => api.get<SourceDocument[]>(`/projects/${projectId}/sources`), [projectId])
   const [adding, setAdding] = useState(false)
+  const [prefill, setPrefill] = useState<{ title: string; url: string } | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SourceHit[] | null>(null)
+  const [plans, setPlans] = useState<LocalPlan[] | null>(null)
+  const [planError, setPlanError] = useState<string | null>(null)
+  const [planBusy, setPlanBusy] = useState(false)
+
+  async function findLocalPlans() {
+    if (project.utmX == null || project.utmY == null) {
+      setPlanError('Projektet har ingen koordinater — opret projektet med adressesøgning, eller redigér adressen.')
+      return
+    }
+    setPlanBusy(true)
+    setPlanError(null)
+    try {
+      setPlans(await api.get<LocalPlan[]>(`/lookup/localplans?utmX=${project.utmX}&utmY=${project.utmY}`))
+    } catch (err) {
+      setPlanError((err as Error).message)
+    } finally {
+      setPlanBusy(false)
+    }
+  }
 
   async function search(e: React.FormEvent) {
     e.preventDefault()
@@ -64,7 +86,33 @@ export default function SourcesPage() {
         </table>
         {sources?.length === 0 && <Empty>Intet kildemateriale endnu — indsæt fx de relevante BR18-kapitler.</Empty>}
       </div>
-      <button className="btn" onClick={() => setAdding(true)}>+ Tilføj kilde</button>
+      <div className="row-actions">
+        <button className="btn" onClick={() => setAdding(true)}>+ Tilføj kilde</button>
+        <button className="btn secondary" disabled={planBusy} onClick={findLocalPlans}>
+          {planBusy ? 'Slår op i Plandata…' : '🔍 Find lokalplan for adressen'}
+        </button>
+      </div>
+      <ErrorText error={planError} />
+      {plans !== null && (
+        <div className="card">
+          <h3>Lokalplaner der dækker adressen</h3>
+          {plans.length === 0 && <Empty>Ingen vedtagne lokalplaner fundet for punktet — dobbelttjek evt. på plandata.dk.</Empty>}
+          {plans.map((p) => (
+            <div key={p.planId} className="form-row" style={{ alignItems: 'center' }}>
+              <strong style={{ flex: 1 }}>{p.name || `Plan ${p.planId}`}</strong>
+              {p.docLink && <a href={p.docLink} target="_blank" rel="noreferrer">Åbn PDF</a>}
+              <button className="btn small secondary"
+                onClick={() => (setPrefill({ title: p.name || `Lokalplan ${p.planId}`, url: p.docLink }), setAdding(true))}>
+                Indlæs som kilde
+              </button>
+            </div>
+          ))}
+          <p className="hint">
+            Åbn PDF'en, kopiér de relevante bestemmelser og indsæt teksten som kilde — så kan
+            assistenten og Lovtjek bruge den med præcise henvisninger.
+          </p>
+        </div>
+      )}
 
       <h2>Søg i kilderne</h2>
       <form onSubmit={search} className="form-row">
@@ -85,21 +133,24 @@ export default function SourcesPage() {
       {hits !== null && hits.length === 0 && <Empty>Ingen resultater.</Empty>}
 
       {adding && (
-        <IngestModal projectId={projectId!} onDone={() => (setAdding(false), reload())} onClose={() => setAdding(false)} />
+        <IngestModal projectId={projectId!} prefill={prefill}
+          onDone={() => (setAdding(false), setPrefill(null), reload())}
+          onClose={() => (setAdding(false), setPrefill(null))} />
       )}
     </>
   )
 }
 
-function IngestModal({ projectId, onDone, onClose }: {
+function IngestModal({ projectId, prefill, onDone, onClose }: {
   projectId: string
+  prefill?: { title: string; url: string } | null
   onDone: () => void
   onClose: () => void
 }) {
-  const [title, setTitle] = useState('')
-  const [kind, setKind] = useState<SourceKind>('br18')
+  const [title, setTitle] = useState(prefill?.title ?? '')
+  const [kind, setKind] = useState<SourceKind>(prefill ? 'local_plan' : 'br18')
   const [versionLabel, setVersionLabel] = useState('')
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(prefill?.url ?? '')
   const [content, setContent] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

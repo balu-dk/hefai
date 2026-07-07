@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
+import type { ProjectContext } from './ProjectShell'
 import { api } from '../api/client'
 import type { Drawing, DrawingData, DrawingVersion, Opening, Point, Wall } from '../api/types'
 import { ErrorText, useLoad } from '../components'
@@ -20,6 +21,7 @@ interface ViewBox { x: number; y: number; w: number; h: number }
 
 export default function DrawingEditorPage() {
   const { drawingId, projectId } = useParams()
+  const { project } = useOutletContext<ProjectContext>()
   const { data: drawing } = useLoad(() => api.get<Drawing>(`/drawings/${drawingId}`), [drawingId])
   const { data: versions, reload: reloadVersions } = useLoad(
     () => api.get<DrawingVersion[]>(`/drawings/${drawingId}/versions`), [drawingId])
@@ -655,6 +657,15 @@ export default function DrawingEditorPage() {
               ? { ...d, geo: { ...d.geo, sizeM: Number(e.target.value) } }
               : d)} />
         </div>
+        {project?.latitude != null && project?.longitude != null && (
+          <button className="btn small secondary"
+            onClick={() => mutate((d) => ({
+              ...d,
+              geo: { lat: project.latitude!, lon: project.longitude!, sizeM: d.geo?.sizeM ?? 150 },
+            }))}>
+            📍 Brug projektets adresse
+          </button>
+        )}
         {data.geo && (
           <button className="btn small secondary" onClick={() => setData((d) => ({ ...d, geo: null }))}>
             Fjern foto

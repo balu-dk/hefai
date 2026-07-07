@@ -39,6 +39,10 @@ type ProjectInput struct {
 	Municipality string   `json:"municipality"`
 	CadastralID  string   `json:"cadastralId"`
 	PlotAreaM2   *float64 `json:"plotAreaM2"`
+	Latitude     *float64 `json:"latitude"`
+	Longitude    *float64 `json:"longitude"`
+	UTMX         *float64 `json:"utmX"`
+	UTMY         *float64 `json:"utmY"`
 }
 
 func (s *Projects) Create(ctx context.Context, userID uuid.UUID, in ProjectInput) (*domain.Project, error) {
@@ -166,5 +170,9 @@ func projectFromInput(in ProjectInput) (*domain.Project, error) {
 		Municipality: strings.TrimSpace(in.Municipality),
 		CadastralID:  strings.TrimSpace(in.CadastralID),
 		PlotAreaM2:   in.PlotAreaM2,
+		Latitude:     in.Latitude,
+		Longitude:    in.Longitude,
+		UTMX:         in.UTMX,
+		UTMY:         in.UTMY,
 	}, nil
 }

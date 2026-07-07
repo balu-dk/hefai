@@ -24,8 +24,35 @@ export interface Project {
   municipality: string
   cadastralId: string
   plotAreaM2: number | null
+  latitude: number | null
+  longitude: number | null
+  utmX: number | null
+  utmY: number | null
   createdBy: string
   createdAt: string
+}
+
+export interface AddressSuggestion {
+  text: string
+  id: string
+}
+
+export interface AddressDetails {
+  address: string
+  municipality: string
+  cadastralId: string
+  plotAreaM2: number | null
+  lat: number
+  lon: number
+  utmX: number
+  utmY: number
+}
+
+export interface LocalPlan {
+  planId: string
+  name: string
+  status: string
+  docLink: string
 }
 
 export type PhaseStatus = 'not_started' | 'in_progress' | 'completed'
