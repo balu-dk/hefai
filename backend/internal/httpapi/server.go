@@ -32,6 +32,7 @@ type Services struct {
 	Ortho      *service.Ortho
 	DrawAssist *service.DrawAssist
 	Advisor    *service.Advisor
+	Rules      *service.Rules
 }
 
 type Server struct {
@@ -184,4 +185,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/v1/drawings/{drawingID}/ai-draw", createUnder(s.svc.DrawAssist.Generate, "drawingID"))
 	mux.HandleFunc("GET /api/v1/projects/{projectID}/advisor", getUnder(s.svc.Advisor.Get, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/rules/catalog", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, s.svc.Rules.Catalog())
+	})
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/rules", getUnder(s.svc.Rules.List, "projectID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/rules", createUnder(s.svc.Rules.Create, "projectID"))
+	mux.HandleFunc("PATCH /api/v1/rules/{ruleID}", patchByID(s.svc.Rules.Update, "ruleID"))
+	mux.HandleFunc("DELETE /api/v1/rules/{ruleID}", deleteByID(s.svc.Rules.Delete, "ruleID"))
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/rules/extract", createUnder(s.svc.Rules.Extract, "projectID"))
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/rules/evaluation", getUnder(s.svc.Rules.Evaluate, "projectID"))
 }

@@ -28,15 +28,16 @@ type Advisor struct {
 	caseFiles CaseFileRepo
 	drawings  DrawingRepo
 	sources   SourceRepo
+	rules     *Rules
 	access    ProjectAccess
 }
 
 func NewAdvisor(provider ai.Provider, docsDir string, phases PhaseRepo, tasks TaskRepo,
 	budget BudgetRepo, materials MaterialRepo, caseFiles CaseFileRepo, drawings DrawingRepo,
-	sources SourceRepo, access ProjectAccess) *Advisor {
+	sources SourceRepo, rules *Rules, access ProjectAccess) *Advisor {
 	return &Advisor{provider: provider, docsDir: docsDir, phases: phases, tasks: tasks,
 		budget: budget, materials: materials, caseFiles: caseFiles, drawings: drawings,
-		sources: sources, access: access}
+		sources: sources, rules: rules, access: access}
 }
 
 type Insight struct {
@@ -68,6 +69,8 @@ type advisorSnapshot struct {
 	HasDrawing      bool   `json:"hasDrawing"`
 	HasSources      bool   `json:"hasSources"`
 	NextActionable  string `json:"nextActionable,omitempty"`
+	RuleViolations  int    `json:"ruleViolations"`
+	RulesChecked    int    `json:"rulesChecked"`
 }
 
 func (s *Advisor) Get(ctx context.Context, userID, projectID uuid.UUID) (*AdvisorResult, error) {
@@ -79,6 +82,21 @@ func (s *Advisor) Get(ctx context.Context, userID, projectID uuid.UUID) (*Adviso
 	if err != nil {
 		return nil, err
 	}
+
+	// Lovtjekket vejer tungest: brud vises altid øverst.
+	if eval, evalErr := s.rules.Evaluate(ctx, userID, projectID); evalErr == nil {
+		snap.RulesChecked = len(eval.Evaluations)
+		snap.RuleViolations = eval.Violations
+		if eval.Violations > 0 {
+			insights = append([]Insight{{Level: "warning", LinkTo: "rules",
+				Text: fmt.Sprintf("Lovtjek: %d af %d regler er OVERSKREDET på den aktuelle tegning — se detaljerne.",
+					eval.Violations, len(eval.Evaluations))}}, insights...)
+		} else if len(eval.Evaluations) > 0 {
+			insights = append(insights, Insight{Level: "info", LinkTo: "rules",
+				Text: fmt.Sprintf("Lovtjek: alle %d regler overholdes på den aktuelle tegning.", len(eval.Evaluations))})
+		}
+	}
+
 	result := &AdvisorResult{Insights: insights}
 
 	// LLM-vurderingen er ren bonus — fejl her må aldrig vælte overblikket.

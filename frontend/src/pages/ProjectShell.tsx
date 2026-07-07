@@ -90,6 +90,7 @@ export default function ProjectShell() {
           </NavLink>
           <div className="section">{simple ? 'Tegning' : 'Byggesag'}</div>
           <NavLink to="drawings" className={nav} data-tour="drawings">Tegninger & 3D</NavLink>
+          <NavLink to="rules" className={nav}>Lovtjek</NavLink>
           {!simple && (
             <>
               <NavLink to="cases" className={nav}>Byggesager</NavLink>

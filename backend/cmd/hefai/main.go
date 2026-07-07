@@ -65,6 +65,7 @@ func run() error {
 	generated := repository.NewGenerated(pool)
 	structural := repository.NewStructural(pool)
 	packages := repository.NewPackages(pool)
+	rules := repository.NewComplianceRules(pool)
 
 	files, err := filestore.NewDisk(cfg.FileStoreDir)
 	if err != nil {
@@ -103,9 +104,10 @@ func run() error {
 			budget, materials, caseFiles, projects),
 		Ortho:      service.NewOrtho(cfg.OrthoWMSURL, cfg.OrthoLayer, cfg.OrthoToken, projects),
 		DrawAssist: service.NewDrawAssist(llm, cfg.AIDocsDir, drawings, projects),
-		Advisor: service.NewAdvisor(llm, cfg.AIDocsDir, phases, tasks, budget, materials,
-			caseFiles, drawings, sources, projects),
+		Rules: service.NewRules(rules, llm, cfg.AIDocsDir, projects, drawings, sources, projects),
 	}
+	svc.Advisor = service.NewAdvisor(llm, cfg.AIDocsDir, phases, tasks, budget, materials,
+		caseFiles, drawings, sources, svc.Rules, projects)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

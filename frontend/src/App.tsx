@@ -19,6 +19,7 @@ import SourcesPage from './pages/SourcesPage'
 import AssistantPage from './pages/AssistantPage'
 import StructuralPage from './pages/StructuralPage'
 import SetupWizardPage from './pages/SetupWizardPage'
+import RulesPage from './pages/RulesPage'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="drawings" element={<DrawingsPage />} />
         <Route path="drawings/:drawingId" element={<DrawingEditorPage />} />
         <Route path="sources" element={<SourcesPage />} />
+        <Route path="rules" element={<RulesPage />} />
         <Route path="assistant" element={<AssistantPage />} />
         <Route path="structural" element={<StructuralPage />} />
       </Route>
