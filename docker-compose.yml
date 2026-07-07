@@ -1,0 +1,53 @@
+# Hefai — selvhostet deploy (Coolify/Hetzner eller enhver Docker-vært).
+#
+#   1. Sæt JWT_SECRET (og evt. POSTGRES_PASSWORD) i miljøet/.env
+#   2. docker compose up -d --build
+#   3. Åbn http://<host>:8090 og opret den første bruger
+#
+# I Coolify: opret en "Docker Compose"-ressource der peger på dette repo.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hefai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hefai}
+      POSTGRES_DB: hefai
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hefai -d hefai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      # POSTGRES_USER er superuser i containeren, så migrationens
+      # CREATE EXTENSION vector kan køre.
+      DATABASE_URL: postgres://hefai:${POSTGRES_PASSWORD:-hefai}@db:5432/hefai
+      JWT_SECRET: ${JWT_SECRET:?Sæt JWT_SECRET i miljøet}
+    volumes:
+      - files:/app/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${HEFAI_PORT:-8090}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  files:
