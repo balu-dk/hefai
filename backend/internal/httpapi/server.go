@@ -19,6 +19,7 @@ type Services struct {
 	Suppliers *service.Suppliers
 	Budget    *service.Budget
 	Materials *service.Materials
+	Documents *service.Documents
 }
 
 type Server struct {
@@ -98,4 +99,15 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/v1/materials/{materialID}", patchByID(s.svc.Materials.Update, "materialID"))
 	mux.HandleFunc("DELETE /api/v1/materials/{materialID}", deleteByID(s.svc.Materials.Delete, "materialID"))
 	mux.HandleFunc("GET /api/v1/projects/{projectID}/materials/shopping-list", getUnder(s.svc.Materials.ShoppingList, "projectID"))
+
+	mux.HandleFunc("GET /api/v1/projects/{projectID}/documents", s.listDocuments)
+	mux.HandleFunc("POST /api/v1/projects/{projectID}/documents", s.uploadDocument)
+	mux.HandleFunc("GET /api/v1/documents/{documentID}", getUnder(s.svc.Documents.Get, "documentID"))
+	mux.HandleFunc("GET /api/v1/documents/{documentID}/content", s.documentContent)
+	mux.HandleFunc("PATCH /api/v1/documents/{documentID}", patchByID(s.svc.Documents.Update, "documentID"))
+	mux.HandleFunc("DELETE /api/v1/documents/{documentID}", deleteByID(s.svc.Documents.Delete, "documentID"))
+	mux.HandleFunc("PUT /api/v1/documents/{documentID}/tags", s.setDocumentTags)
+	mux.HandleFunc("GET /api/v1/documents/{documentID}/links", getUnder(s.svc.Documents.ListLinks, "documentID"))
+	mux.HandleFunc("POST /api/v1/documents/{documentID}/links", createUnder(s.svc.Documents.AddLink, "documentID"))
+	mux.HandleFunc("DELETE /api/v1/documents/{documentID}/links/{linkID}", s.removeDocumentLink)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/balu-dk/hefai/backend/internal/auth"
 	"github.com/balu-dk/hefai/backend/internal/config"
 	"github.com/balu-dk/hefai/backend/internal/database"
+	"github.com/balu-dk/hefai/backend/internal/filestore"
 	"github.com/balu-dk/hefai/backend/internal/httpapi"
 	"github.com/balu-dk/hefai/backend/internal/repository"
 	"github.com/balu-dk/hefai/backend/internal/service"
@@ -55,6 +56,12 @@ func run() error {
 	suppliers := repository.NewSuppliers(pool)
 	budget := repository.NewBudget(pool)
 	materials := repository.NewMaterials(pool)
+	documents := repository.NewDocuments(pool)
+
+	files, err := filestore.NewDisk(cfg.FileStoreDir)
+	if err != nil {
+		return err
+	}
 
 	svc := httpapi.Services{
 		Auth:      service.NewAuth(users, tokens),
@@ -65,6 +72,7 @@ func run() error {
 		Suppliers: service.NewSuppliers(suppliers, projects),
 		Budget:    service.NewBudget(budget, phases, projects),
 		Materials: service.NewMaterials(materials, suppliers, projects),
+		Documents: service.NewDocuments(documents, files, projects),
 	}
 
 	server := &http.Server{
